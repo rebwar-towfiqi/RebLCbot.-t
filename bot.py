@@ -11,7 +11,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from typing import Generator, Optional
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -21,6 +21,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from psycopg2.pool import SimpleConnectionPool
 
 # ---------------------------------------------------------------------------#
 # 1. Environment variables & Configuration                                   #
@@ -93,36 +94,9 @@ def init_db() -> None:
             logger.info("Connected to PostgreSQL 🎉")
             return
         except Exception as e:
-            logger.warning(f"Postgres init failed ({e!r}), falling back to SQLite.")
-    # SQLite fallback
-    DB_TYPE = "sqlite"
-    SQLITE_PATH.touch(exist_ok=True)
-    conn = sqlite3.connect(SQLITE_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            expires_at TIMESTAMP
-        );
-        """
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_expires ON subscriptions (expires_at);")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            question TEXT,
-            answer TEXT,
-            timestamp TIMESTAMP
-        );
-        """
-    )
-    conn.commit()
-    conn.close()
-    logger.info("Using SQLite database (%s) 🎉", SQLITE_PATH)
+            logger.error(f"Postgres init failed ({e!r})")
+    else:
+        logger.error("DATABASE_URL not set")
 
 def initialize_database() -> None:
     try:
