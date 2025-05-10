@@ -4,7 +4,6 @@ Copyright © 2025 Rebwar Lawyer
 from __future__ import annotations
 import os
 import logging
-import sqlite3
 import openai
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -213,27 +212,35 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # 4. Handlers                                                                #
 # ---------------------------------------------------------------------------#
 
-def persian_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔐 خرید اشتراک", callback_data="menu_buy")],
-        [InlineKeyboardButton("📎 ارسال رسید", callback_data="menu_send_receipt")],
-        [InlineKeyboardButton("📅 وضعیت اشتراک", callback_data="menu_status")],
-        [InlineKeyboardButton("⚖️ سوال حقوقی", callback_data="menu_ask")],
-        [InlineKeyboardButton("💎 توکن RebLawCoin", callback_data="menu_token_info")]
-    ])
+TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "👋 به ربات RebLawCoin خوش آمدید!\nاز منوی زیر گزینه مورد نظرتان را انتخاب کنید:",
-        reply_markup=persian_menu()
+        "👋 به ربات RebLawCoin خوش آمدید!\n"
+        "از دستورات زیر استفاده کنید:\n"
+        "/buy — خرید اشتراک\n"
+        "/status — وضعیت اشتراک\n"
+        "/ask — سوال حقوقی\n"
+        "/send_receipt — ارسال رسید\n"
+        "/help — راهنما"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "دستورات:\n/start — منوی اصلی\n/help — این راهنما\n/send_receipt — ارسال رسید پرداخت\n/status — وضعیت اشتراک\n/ask <سوال> — پرسش و پاسخ حقوقی"
+        "دستورات:\n"
+        "/start — منوی اصلی\n"
+        "/help — این راهنما\n"
+        "/send_receipt — ارسال رسید پرداخت\n"
+        "/status — وضعیت اشتراک\n"
+        "/ask <سوال> — پرسش و پاسخ حقوقی\n"
+        "\n"
+        "دستورات فارسی:\n"
+        "خرید اشتراک — نحوه خرید اشتراک\n"
+        "ارسال رسید — ارسال رسید پرداخت\n"
+        "وضعیت اشتراک — بررسی وضعیت اشتراک\n"
+        "سوال حقوقی — پرسش و پاسخ حقوقی\n"
+        "درباره توکن — معرفی توکن RebLawCoin"
     )
-
-TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
@@ -391,12 +398,14 @@ def main() -> None:
     app.add_handler(CommandHandler("ask", ask))
     app.add_handler(CommandHandler("send_receipt", send_receipt))
 
-    # Menu buttons
-    app.add_handler(CallbackQueryHandler(buy, pattern=r"^menu_buy$"))
-    app.add_handler(CallbackQueryHandler(send_receipt, pattern=r"^menu_send_receipt$"))
-    app.add_handler(CallbackQueryHandler(status, pattern=r"^menu_status$"))
-    app.add_handler(CallbackQueryHandler(ask, pattern=r"^menu_ask$"))
-    app.add_handler(CallbackQueryHandler(about_token, pattern=r"^menu_token_info$"))
+    # Persian commands
+    from telegram.ext.filters import Regex
+    import re
+    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(خرید اشتراک)[^\w]*$", re.IGNORECASE), buy))
+    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(ارسال رسید)[^\w]*$", re.IGNORECASE), send_receipt))
+    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(وضعیت اشتراک)[^\w]*$", re.IGNORECASE), status))
+    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(سوال حقوقی)[^\w]*$", re.IGNORECASE), ask))
+    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(درباره توکن|معرفی توکن|درباره ریبلوکوین)[^\w]*$", re.IGNORECASE), about_token))
 
     # Receipt handler
     receipt_filter = (filters.PHOTO | filters.TEXT) & ~filters.COMMAND
