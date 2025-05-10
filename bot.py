@@ -25,7 +25,7 @@ from telegram.ext import (
     filters,
 )
 
-# ─────────────────── 1. Env & config ───────────────────
+# ─────────────── 1. Env & config ───────────────
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
                     level=logging.INFO)
@@ -49,7 +49,7 @@ config = {
 
 client = openai.OpenAI(api_key=config["OPENAI_API_KEY"])
 
-# ─────────────────── 2. Database setup ───────────────────
+# ─────────────── 2. Database init ───────────────
 SQLITE_PATH = Path("users.db")
 DB_TYPE = ""
 POOL: Optional[SimpleConnectionPool] = None
@@ -83,7 +83,7 @@ def init_db() -> None:
         logger.info("Connected to PostgreSQL 🎉")
         return
     except Exception as e:  # noqa: BLE001
-        logger.warning("Postgres init failed (%r); falling back to SQLite.", e)
+        logger.warning("Postgres init failed (%r); using SQLite.", e)
 
     DB_TYPE = "sqlite"
     SQLITE_PATH.touch(exist_ok=True)
@@ -111,9 +111,9 @@ def init_db() -> None:
         )
     logger.info("Using SQLite (%s) 🎉", SQLITE_PATH)
 
-# ─────────────────── 3. DB helpers ───────────────────
+# ─────────────── 3. DB helpers ───────────────
 def save_subscription(user_id: int, username: str | None, days: int) -> None:
-    expires_at = datetime.utcnow() + timedelta(days=days)
+    exp = datetime.utcnow() + timedelta(days=days)
     with get_conn() as conn:
         cur = conn.cursor()
         if DB_TYPE == "postgres":
@@ -125,16 +125,16 @@ def save_subscription(user_id: int, username: str | None, days: int) -> None:
                     username = COALESCE(EXCLUDED.username, subscriptions.username),
                     expires_at = EXCLUDED.expires_at
                 """,
-                (user_id, username, expires_at),
+                (user_id, username, exp),
             )
         else:
             cur.execute(
                 "INSERT OR REPLACE INTO subscriptions (user_id, username, expires_at) "
                 "VALUES (?, ?, ?)",
-                (user_id, username, expires_at),
+                (user_id, username, exp),
             )
-        conn.commit()                  # ←ـــــ اضافه شد
-    logger.info("Subscription saved for %s until %s", user_id, expires_at)
+        conn.commit()
+    logger.info("Subscription saved for %s until %s", user_id, exp)
 
 
 def has_active_subscription(user_id: int) -> bool:
@@ -153,7 +153,7 @@ def has_active_subscription(user_id: int) -> bool:
     return datetime.utcnow() < exp
 
 
-def save_question(user_id: int, question: str, answer: str) -> None:
+def save_question(user_id: int, qst: str, ans: str) -> None:
     ts = datetime.utcnow()
     with get_conn() as conn:
         cur = conn.cursor()
@@ -161,19 +161,19 @@ def save_question(user_id: int, question: str, answer: str) -> None:
             cur.execute(
                 "INSERT INTO questions (user_id, question, answer, timestamp) "
                 "VALUES (%s, %s, %s, %s)",
-                (user_id, question, answer, ts),
+                (user_id, qst, ans, ts),
             )
         else:
             cur.execute(
                 "INSERT INTO questions (user_id, question, answer, timestamp) "
                 "VALUES (?, ?, ?, ?)",
-                (user_id, question, answer, ts),
+                (user_id, qst, ans, ts),
             )
-        conn.commit()                  # ←ـــــ اضافه شد
+        conn.commit()
     logger.info("Q/A stored for %s", user_id)
 
-# ─────────────────── 4. UI & handlers ───────────────────
-def english_menu() -> InlineKeyboardMarkup:
+# ─────────────── 4. UI & handlers ───────────────
+def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("🔐 Buy Subscription", callback_data="menu_buy")],
@@ -193,10 +193,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/buy — خرید اشتراک\n"
         "/send_receipt — ارسال رسید پرداخت\n"
         "/status — وضعیت اشتراک\n"
-        "/ask <سؤال> — پرسش حقوقی\n"
+        "/ask &lt;سؤال&gt; — پرسش حقوقی\n"
         "/token — معرفی و اهداف توکن RebLawCoin",
         parse_mode=ParseMode.HTML,
-        reply_markup=english_menu(),
+        reply_markup=main_menu(),
     )
 
 
@@ -224,16 +224,15 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.user_data.get("awaiting_receipt"):
         return
-
-    user = update.effective_user
+    usr = update.effective_user
     caption = (
         "📥 رسید پرداخت از:\n"
-        f"🆔 <code>{user.id}</code>\n"
-        f"👤 @{user.username or '—'}"
+        f"🆔 <code>{usr.id}</code>\n"
+        f"👤 @{usr.username or '—'}"
     )
     kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{user.id}"),
-          InlineKeyboardButton("❌ رد", callback_data=f"reject:{user.id}")]]
+        [[InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{usr.id}"),
+          InlineKeyboardButton("❌ رد", callback_data=f"reject:{usr.id}")]]
     )
     admin = config["ADMIN_ID"]
     if update.message.photo:
@@ -250,10 +249,9 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     q = update.callback_query
     await q.answer()
-    action, uid = q.data.split(":", 1)
+    act, uid = q.data.split(":", 1)
     uid = int(uid)
-
-    if action == "approve":
+    if act == "approve":
         save_subscription(uid, "-", 30)
         await context.bot.send_message(uid, "✅ اشتراک شما تأیید شد.")
         await q.edit_message_caption("✅ رسید تأیید شد.")
@@ -270,7 +268,6 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text("❓ لطفاً سؤال را پس از /ask بنویسید.")
         return
-
     question = " ".join(context.args)
     try:
         res = client.chat.completions.create(
@@ -283,9 +280,9 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             max_tokens=500,
             temperature=0.7,
         )
-        answer = res.choices[0].message.content.strip()
-        await update.message.reply_text(answer)
-        save_question(uid, question, answer)
+        ans = res.choices[0].message.content.strip()
+        await update.message.reply_text(ans)
+        save_question(uid, question, ans)
     except Exception as e:  # noqa: BLE001
         logger.error("OpenAI error: %s", e)
         await update.message.reply_text("⚠️ خطا در پردازش سؤال. بعداً دوباره تلاش کنید.")
@@ -327,7 +324,7 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parse_mode=ParseMode.HTML,
     )
 
-# ─────────────────── 5. Main ───────────────────
+# ─────────────── 5. Main ───────────────
 async def remove_webhook(app: Application) -> None:
     await app.bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook removed.")
@@ -335,7 +332,6 @@ async def remove_webhook(app: Application) -> None:
 
 def main() -> None:
     init_db()
-
     app = (
         Application.builder()
         .token(config["BOT_TOKEN"])
@@ -367,4 +363,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
