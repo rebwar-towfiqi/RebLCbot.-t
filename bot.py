@@ -25,7 +25,7 @@ from telegram.ext import (
     filters,
 )
 
-# ─────────────── 1. Env & config ───────────────
+# ─────────────────── 1. Env & config ───────────────────
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
                     level=logging.INFO)
@@ -49,7 +49,7 @@ config = {
 
 client = openai.OpenAI(api_key=config["OPENAI_API_KEY"])
 
-# ─────────────── 2. Database init ───────────────
+# ─────────────────── 2. Database init ───────────────────
 SQLITE_PATH = Path("users.db")
 DB_TYPE = ""
 POOL: Optional[SimpleConnectionPool] = None
@@ -111,7 +111,7 @@ def init_db() -> None:
         )
     logger.info("Using SQLite (%s) 🎉", SQLITE_PATH)
 
-# ─────────────── 3. DB helpers ───────────────
+# ─────────────────── 3. DB helpers ───────────────────
 def save_subscription(user_id: int, username: str | None, days: int) -> None:
     exp = datetime.utcnow() + timedelta(days=days)
     with get_conn() as conn:
@@ -172,7 +172,29 @@ def save_question(user_id: int, qst: str, ans: str) -> None:
         conn.commit()
     logger.info("Q/A stored for %s", user_id)
 
-# ─────────────── 4. UI & handlers ───────────────
+# ─────────────────── 4. Utils ───────────────────
+def get_reply_target(update: Update):
+    """Return (message object, is_callback) for unified replies."""
+    if update.message:
+        return update.message, False
+    if update.callback_query:
+        return update.callback_query.message, True
+    raise RuntimeError("No message in update")
+
+
+async def send_long(update: Update, text: str, **kwargs) -> None:
+    """Split long messages (Telegram limit 4096) and send sequentially."""
+    msg, _ = get_reply_target(update)
+    chunk = 4096
+    while text:
+        part = text[:chunk]
+        # سعی می‌کنیم در محل خط جدید جدا کنیم
+        if len(text) > chunk and "\n" in part:
+            part = part.rsplit("\n", 1)[0]
+        await msg.reply_text(part, **kwargs)
+        text = text[len(part):]
+
+# ─────────────────── 5. UI & handlers ───────────────────
 def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -186,7 +208,10 @@ def main_menu() -> InlineKeyboardMarkup:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
+    msg, is_cb = get_reply_target(update)
+    if is_cb:
+        await update.callback_query.answer()
+    await msg.reply_text(
         "👋 به RebLawBot خوش آمدید!\n"
         "از منوی زیر گزینهٔ موردنظر را انتخاب کنید.\n\n"
         "📖 <b>دستورات:</b>\n"
@@ -201,13 +226,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "ℹ️ برای مشاهدهٔ منو و دستورات، /start را ارسال کنید."
-    )
+    msg, _ = get_reply_target(update)
+    await msg.reply_text("ℹ️ برای مشاهدهٔ منو و دستورات، /start را ارسال کنید.")
 
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
+    msg, is_cb = get_reply_target(update)
+    if is_cb:
+        await update.callback_query.answer()
+    await msg.reply_text(
         "<b>📌 روش خرید اشتراک:</b>\n"
         f"• کارت‌به‌کارت ۵۰۰٬۰۰۰ تومان → <code>{config['BANK_CARD_NUMBER']}</code>\n\n"
         "🔸 سپس دستور /send_receipt را ارسال کنید.\n"
@@ -217,7 +244,10 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("لطفاً رسید را به صورت عکس یا متن ارسال کنید.")
+    msg, is_cb = get_reply_target(update)
+    if is_cb:
+        await update.callback_query.answer()
+    await msg.reply_text("لطفاً رسید را به صورت عکس یا متن ارسال کنید.")
     context.user_data["awaiting_receipt"] = True
 
 
@@ -261,12 +291,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg, _ = get_reply_target(update)
     uid = update.effective_user.id
     if not has_active_subscription(uid):
-        await update.message.reply_text("❌ شما اشتراک فعّالی ندارید.")
+        await msg.reply_text("❌ شما اشتراک فعّالی ندارید.")
         return
     if not context.args:
-        await update.message.reply_text("❓ لطفاً سؤال را پس از /ask بنویسید.")
+        await msg.reply_text("❓ لطفاً سؤال را پس از /ask بنویسید.")
         return
     question = " ".join(context.args)
     try:
@@ -277,18 +308,21 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                  "content": "You are a legal expert assistant. Answer in Persian."},
                 {"role": "user", "content": question},
             ],
-            max_tokens=500,
+            max_tokens=800,
             temperature=0.7,
         )
         ans = res.choices[0].message.content.strip()
-        await update.message.reply_text(ans)
+        await send_long(update, ans)
         save_question(uid, question, ans)
     except Exception as e:  # noqa: BLE001
         logger.error("OpenAI error: %s", e)
-        await update.message.reply_text("⚠️ خطا در پردازش سؤال. بعداً دوباره تلاش کنید.")
+        await msg.reply_text("⚠️ خطا در پردازش سؤال. بعداً دوباره تلاش کنید.")
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg, is_cb = get_reply_target(update)
+    if is_cb:
+        await update.callback_query.answer()
     uid = update.effective_user.id
     with get_conn() as conn:
         cur = conn.cursor()
@@ -298,13 +332,13 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         cur.execute(q, (uid,))
         row = cur.fetchone()
     if not row:
-        await update.message.reply_text("❌ اشتراک فعّالی یافت نشد.")
+        await msg.reply_text("❌ اشتراک فعّالی یافت نشد.")
         return
     exp = row[0]
     if isinstance(exp, str):
         exp = datetime.fromisoformat(exp)
     remain = (exp - datetime.utcnow()).days
-    await update.message.reply_text(
+    await msg.reply_text(
         f"✅ اشتراک شما تا {exp:%Y-%m-%d} معتبر است ({remain} روز)."
     )
 
@@ -313,9 +347,12 @@ TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg, is_cb = get_reply_target(update)
+    if is_cb:
+        await update.callback_query.answer()
     if TOKEN_IMG.exists():
-        await update.message.reply_photo(TOKEN_IMG.open("rb"))
-    await update.message.reply_text(
+        await msg.reply_photo(TOKEN_IMG.open("rb"))
+    await msg.reply_text(
         "🎉 <b>توکن RebLawCoin (RLC)</b> اولین ارز دیجیتال حقوقی است.\n\n"
         "<b>اهداف پروژه:</b>\n"
         "• سرمایه‌گذاری در طرح‌های حقوقی\n"
@@ -324,7 +361,7 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parse_mode=ParseMode.HTML,
     )
 
-# ─────────────── 5. Main ───────────────
+# ─────────────────── 6. Main ───────────────────
 async def remove_webhook(app: Application) -> None:
     await app.bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook removed.")
@@ -332,6 +369,7 @@ async def remove_webhook(app: Application) -> None:
 
 def main() -> None:
     init_db()
+
     app = (
         Application.builder()
         .token(config["BOT_TOKEN"])
@@ -339,6 +377,7 @@ def main() -> None:
         .build()
     )
 
+    # Slash commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("buy", buy))
@@ -347,14 +386,17 @@ def main() -> None:
     app.add_handler(CommandHandler("ask", ask))
     app.add_handler(CommandHandler("token", about_token))
 
+    # Menu callbacks
     app.add_handler(CallbackQueryHandler(buy, pattern="^menu_buy$"))
     app.add_handler(CallbackQueryHandler(send_receipt, pattern="^menu_send_receipt$"))
     app.add_handler(CallbackQueryHandler(status, pattern="^menu_status$"))
     app.add_handler(CallbackQueryHandler(ask, pattern="^menu_ask$"))
     app.add_handler(CallbackQueryHandler(about_token, pattern="^menu_token_info$"))
 
+    # Receipt messages
     app.add_handler(MessageHandler((filters.PHOTO | filters.TEXT) & ~filters.COMMAND,
                                    handle_receipt))
+    # Admin approve / reject
     app.add_handler(CallbackQueryHandler(callback_handler, pattern="^(approve|reject):"))
 
     logger.info("🤖 RebLawBot started successfully.")
@@ -363,3 +405,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
