@@ -1,9 +1,6 @@
-"""RebLCbot - Telegram bot that sells subscriptions and answers legal questions using OpenAI.
-Copyright © 2025 Rebwar Lawyer
-"""
-from __future__ import annotations
 import os
 import logging
+import sqlite3
 import openai
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +18,7 @@ from telegram.ext import (
     filters,
 )
 from psycopg2.pool import SimpleConnectionPool
+import re
 
 # ---------------------------------------------------------------------------#
 # 1. Environment variables & Configuration                                   #
@@ -50,6 +48,13 @@ config = {
 
 # Initialize OpenAI client
 client = openai.OpenAI(api_key=config["OPENAI_API_KEY"])
+
+# Define Persian commands with regex patterns
+BUY_REGEX = re.compile(r"^[^\w]*(خرید اشتراک)[^\w]*$", re.IGNORECASE)
+SEND_RECEIPT_REGEX = re.compile(r"^[^\w]*(ارسال رسید)[^\w]*$", re.IGNORECASE)
+STATUS_REGEX = re.compile(r"^[^\w]*(وضعیت اشتراک)[^\w]*$", re.IGNORECASE)
+ASK_REGEX = re.compile(r"^[^\w]*(سوال حقوقی)[^\w]*$", re.IGNORECASE)
+ABOUT_TOKEN_REGEX = re.compile(r"^[^\w]*(درباره توکن|معرفی توکن|درباره ریبلوکوین)[^\w]*$", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------#
 # 2. Database initialization & connection                                    #
@@ -141,240 +146,8 @@ def initialize_database() -> None:
         logger.error(f"Database initialization failed: {e}")
 
 # ---------------------------------------------------------------------------#
-# 3. Database DDL / DML helpers                                              #
-# ---------------------------------------------------------------------------#
-
-def save_subscription(user_id: int, username: Optional[str], days: int) -> None:
-    expires_at = datetime.utcnow() + timedelta(days=days)
-    with get_conn() as conn:
-        cur = conn.cursor()
-        if DB_TYPE == "postgres":
-            cur.execute(
-                """
-                INSERT INTO subscriptions (user_id, username, expires_at)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET 
-                    username = COALESCE(EXCLUDED.username, subscriptions.username),
-                    expires_at = EXCLUDED.expires_at
-                """,
-                (user_id, username, expires_at),
-            )
-        else:
-            cur.execute(
-                "INSERT OR REPLACE INTO subscriptions (user_id, username, expires_at) VALUES (?, ?, ?)",
-                (user_id, username, expires_at),
-            )
-    logger.info("Subscription saved for %s (until %s) 🎉", user_id, expires_at)
-
-def has_active_subscription(user_id: int) -> bool:
-    with get_conn() as conn:
-        cur = conn.cursor()
-        query = (
-            "SELECT expires_at FROM subscriptions WHERE user_id = %s"
-            if DB_TYPE == "postgres"
-            else "SELECT expires_at FROM subscriptions WHERE user_id = ?"
-        )
-        cur.execute(query, (user_id,))
-        row = cur.fetchone()
-    if not row:
-        return False
-    expires = row[0]
-    if isinstance(expires, str):
-        try:
-            expires = datetime.fromisoformat(expires)
-        except ValueError:
-            expires = datetime.strptime(expires, "%Y-%m-%d %H:%M:%S")
-    return datetime.utcnow() < expires
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    with get_conn() as conn:
-        cur = conn.cursor()
-        query = (
-            "SELECT expires_at FROM subscriptions WHERE user_id = %s"
-            if DB_TYPE == "postgres"
-            else "SELECT expires_at FROM subscriptions WHERE user_id = ?"
-        )
-        cur.execute(query, (user_id,))
-        row = cur.fetchone()
-    if row:
-        expires = row[0]
-        if isinstance(expires, str):
-            expires = datetime.fromisoformat(expires)
-        remaining = max((expires - datetime.utcnow()).days, 0)
-        await update.message.reply_text(
-            f"✅ اشتراک شما تا {expires.strftime('%Y-%m-%d')} معتبر است.\n({remaining} روز باقی‌مانده)"
-        )
-        return
-    await update.message.reply_text("❌ اشتراک فعالی یافت نشد.")
-
-# ---------------------------------------------------------------------------#
-# 4. Handlers                                                                #
-# ---------------------------------------------------------------------------#
-
-TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "👋 به ربات RebLawCoin خوش آمدید!\n"
-        "از دستورات زیر استفاده کنید:\n"
-        "/buy — خرید اشتراک\n"
-        "/status — وضعیت اشتراک\n"
-        "/ask — سوال حقوقی\n"
-        "/send_receipt — ارسال رسید\n"
-        "/help — راهنما"
-    )
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "دستورات:\n"
-        "/start — منوی اصلی\n"
-        "/help — این راهنما\n"
-        "/send_receipt — ارسال رسید پرداخت\n"
-        "/status — وضعیت اشتراک\n"
-        "/ask <سوال> — پرسش و پاسخ حقوقی\n"
-        "\n"
-        "دستورات فارسی:\n"
-        "خرید اشتراک — نحوه خرید اشتراک\n"
-        "ارسال رسید — ارسال رسید پرداخت\n"
-        "وضعیت اشتراک — بررسی وضعیت اشتراک\n"
-        "سوال حقوقی — پرسش و پاسخ حقوقی\n"
-        "درباره توکن — معرفی توکن RebLawCoin"
-    )
-
-async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "<b>📌 روش‌های خرید اشتراک:</b>\n"
-        f"1️⃣ واریز 2 TON → <code>{config['TON_WALLET_ADDR']}</code>\n"
-        f"2️⃣ کارت‌به‌کارت ۵۰۰٬۰۰۰ تومان → <code>{config['BANK_CARD_NUMBER']}</code>\n"
-        "🔸 سپس /send_receipt را ارسال کنید.\n"
-        "✅ TON = اشتراک ۶ ماهه\n"
-        "✅ کارت‌بانکی = اشتراک ۱ ماهه",
-        parse_mode=ParseMode.HTML,
-    )
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 کانال تلگرام", url="https://t.me/RebLawCoin ")],
-        [InlineKeyboardButton("📸 اینستاگرام", url="https://www.instagram.com/reblawcoin/ ")]
-    ])
-    await update.message.reply_text("🎉 RebLawCoin — اولین توکن حقوقی جهان", reply_markup=keyboard)
-
-async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logo = Path("reblawcoin.png")
-    if logo.exists():
-        await update.message.reply_photo(logo.open("rb"))
-    text = (
-        "🎉 به RebLawCoin خوش آمدید!\n"
-        "💎 **توکن RebLawCoin (RLC)** اولین ارز دیجیتال حقوقی‌ست.\n"
-        "**اهداف پروژه:**\n"
-        "• سرمایه‌گذاری در طرح‌های حقوقی محلی و بین‌المللی\n"
-        "• نهادینه‌سازی عدالت با بلاک‌چین\n"
-        "• سوددهی پایدار برای سرمایه‌گذاران"
-    )
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 کانال تلگرام", url="https://t.me/RebLawCoin ")],
-        [InlineKeyboardButton("📸 اینستاگرام", url="https://www.instagram.com/reblawcoin/ ")]
-    ])
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
-
-async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("لطفاً رسید را به صورت عکس یا متن ارسال کنید.")
-    context.user_data["awaiting_receipt"] = True
-
-async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.user_data.get("awaiting_receipt"):
-        return
-    user = update.effective_user
-    caption = (
-        f"📥 رسید پرداخت از:\n"
-        f"🆔 <code>{user.id}</code>\n"
-        f"👤 @{user.username or '—'}"
-    )
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{user.id}"),
-        InlineKeyboardButton("❌ رد", callback_data=f"reject:{user.id}")
-    ]])
-    admin_id = config["ADMIN_ID"]
-    if update.message.photo:
-        await context.bot.send_photo(
-            chat_id=admin_id,
-            photo=update.message.photo[-1].file_id,
-            caption=caption,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=admin_id,
-            text=f"{caption}\n📝 {update.message.text}",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
-    await update.message.reply_text("✅ رسید شما ثبت شد، منتظر بررسی مدیر باشید.")
-    context.user_data["awaiting_receipt"] = False
-    context.user_data["payment_type"] = "bank" if "کارت" in update.message.text else "ton"
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    action, user_id_str = query.data.split(":", 1)
-    user_id = int(user_id_str)
-    payment_type = context.user_data.get("payment_type", "ton")
-    if action == "approve":
-        if payment_type == "bank":
-            save_subscription(user_id, "-", 30)  # یک ماه
-        else:
-            save_subscription(user_id, "-", 180)  # شش ماه
-        await context.bot.send_message(user_id, "✅ اشتراک شما تایید شد. از خدمات لذت ببرید.")
-        await query.edit_message_caption("✅ رسید تأیید شد.")
-    else:
-        await context.bot.send_message(user_id, "❌ متأسفیم، رسید شما تأیید نشد.")
-        await query.edit_message_caption("❌ رسید رد شد.")
-
-def save_question(user_id: int, question: str, answer: str) -> None:
-    timestamp = datetime.utcnow()
-    with get_conn() as conn:
-        cur = conn.cursor()
-        if DB_TYPE == "postgres":
-            cur.execute(
-                "INSERT INTO questions (user_id, question, answer, timestamp) VALUES (%s, %s, %s, %s)",
-                (user_id, question, answer, timestamp),
-            )
-        else:
-            cur.execute(
-                "INSERT INTO questions (user_id, question, answer, timestamp) VALUES (?, ?, ?, ?)",
-                (user_id, question, answer, timestamp),
-            )
-    logger.info("Q/A stored for %s at %s", user_id, timestamp)
-
-async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    if not has_active_subscription(user_id):
-        await update.message.reply_text("❌ شما اشتراک فعالی ندارید. ابتدا اشتراک خود را تمدید کنید.")
-        return
-    if len(context.args) == 0:
-        await update.message.reply_text("❓ لطفاً سوال حقوقی خود را بعد از دستور `/ask` بنویسید.")
-        return
-    question = " ".join(context.args)
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a legal expert assistant. Answer in Persian."},
-                {"role": "user", "content": question}
-            ],
-            max_tokens=500,
-            temperature=0.7
-        )
-        answer = response.choices[0].message.content.strip()
-        await update.message.reply_text(answer)
-        save_question(user_id, question, answer)
-    except Exception as e:
-        logger.error(f"OpenAI error: {e}")
-        await update.message.reply_text("⚠️ خطایی در پردازش سوال شما رخ داد. لطفاً دوباره امتحان کنید.")
-
-# ---------------------------------------------------------------------------#
-# 5. Main + remove_webhook                                                   #
-# ---------------------------------------------------------------------------#
+# 3. Main + remove_webhook                                                   #
+# ---------------------------------------------------------------------------
 
 async def remove_webhook(app: Application) -> None:
     await app.bot.delete_webhook(drop_pending_updates=True)
@@ -399,13 +172,11 @@ def main() -> None:
     app.add_handler(CommandHandler("send_receipt", send_receipt))
 
     # Persian commands
-    from telegram.ext.filters import Regex
-    import re
-    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(خرید اشتراک)[^\w]*$", re.IGNORECASE), buy))
-    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(ارسال رسید)[^\w]*$", re.IGNORECASE), send_receipt))
-    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(وضعیت اشتراک)[^\w]*$", re.IGNORECASE), status))
-    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(سوال حقوقی)[^\w]*$", re.IGNORECASE), ask))
-    app.add_handler(MessageHandler(filters.Regex(r"^[^\w]*(درباره توکن|معرفی توکن|درباره ریبلوکوین)[^\w]*$", re.IGNORECASE), about_token))
+    app.add_handler(MessageHandler(BUY_REGEX, buy))
+    app.add_handler(MessageHandler(SEND_RECEIPT_REGEX, send_receipt))
+    app.add_handler(MessageHandler(STATUS_REGEX, status))
+    app.add_handler(MessageHandler(ASK_REGEX, ask))
+    app.add_handler(MessageHandler(ABOUT_TOKEN_REGEX, about_token))
 
     # Receipt handler
     receipt_filter = (filters.PHOTO | filters.TEXT) & ~filters.COMMAND
