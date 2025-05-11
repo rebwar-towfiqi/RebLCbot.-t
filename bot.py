@@ -236,7 +236,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.callback_query.answer()
     await msg.reply_text(
         "<b>📌 روش خرید اشتراک:</b>\n"
-        f"• کارت‌به‌کارت ۵۰۰٬۰۰۰ تومان → <code>{config['BANK_CARD_NUMBER']}</code>\n\n"
+        f"• کارت‌به‌کارت 300٬000 تومان → <code>{config['BANK_CARD_NUMBER']}</code>\n\n"
         "🔸 سپس دستور /send_receipt را ارسال کنید.\n"
         "✅ پرداخت کارت‌بانکی = اشتراک 2 ماهه",
         parse_mode=ParseMode.HTML,
