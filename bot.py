@@ -106,7 +106,7 @@ def init_db():
     راه‌اندازی پایگاه داده و انتخاب بین PostgreSQL یا SQLite.
     """
     global DB_TYPE, POOL
-    dsn = CFG["DATABASE_URL"].strip()
+    dsn =["DATABASE_URL"].strip()
     try:
         # تلاش برای اتصال به PostgreSQL
         POOL = SimpleConnectionPool(
@@ -751,7 +751,7 @@ def main() -> None:
     init_db()
 
     # 2️⃣ ساخت اپلیکیشن تلگرام با توکن
-    application = Application.builder().token(CFG["BOT_TOKEN"]).build()
+    application = Application.builder().token(["BOT_TOKEN"]).build()
 
     # 3️⃣ ثبت تمام هندلرها
     register_handlers(application)
