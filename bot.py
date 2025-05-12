@@ -46,29 +46,19 @@ from telegram.ext import (
 # 1️⃣ Environment & Global Configuration                                      #
 # ---------------------------------------------------------------------------#
 load_dotenv()
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    level=logging.DEBUG,
-)
-logger = logging.getLogger("RebLawBot")
 
 def getenv_or_die(key: str) -> str:
-    """
-    دریافت مقدار متغیر محیطی؛ در صورت عدم وجود، خطا ایجاد می‌کند.
-    """
-    val = os.getenv(key)
-    if not val:
-        raise RuntimeError(f"Environment variable '{key}' is missing")
-    return val
+    value = os.getenv(key)
+    if not value:
+        raise RuntimeError(f"Environment variable {key!r} is missing")
+    return value
 
-# بارگذاری متغیرهای محیطی
-CFG = {
-    "BOT_TOKEN": getenv_or_die("BOT_TOKEN"),
-    "ADMIN_ID": int(getenv_or_die("ADMIN_ID")),
-    "OPENAI_API_KEY": getenv_or_die("OPENAI_API_KEY"),
-    "DATABASE_URL": getenv_or_die("DATABASE_URL"),
-    "BANK_CARD_NUMBER": getenv_or_die("BANK_CARD_NUMBER"),
-}
+BOT_TOKEN        = getenv_or_die("BOT_TOKEN")
+ADMIN_ID         = int(getenv_or_die("ADMIN_ID"))
+OPENAI_API_KEY   = getenv_or_die("OPENAI_API_KEY")
+DATABASE_URL     = getenv_or_die("DATABASE_URL")   # postgresql://pguser:pgpassword@containers-us-west-xxx.railway.app:5432/railway
+BANK_CARD_NUMBER = getenv_or_die("BANK_CARD_NUMBER")
+MEMEPAD_LINK     = getenv_or_die("MEMEPAD_LINK")
 
 # ایجاد یک کلاینت OpenAI به صورت همگام با تایم اوت مشخص شده
 client = openai.ChatCompletion.create
@@ -433,11 +423,12 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # 🏷️ دستور ارسال رسید
-async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("لطفاً رسید را به صورت عکس یا متن ارسال کنید.")
     context.user_data["awaiting_receipt"] = True
 
-async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت عکس/متن رسید – فقط وقتی در حال انتظار هستیم"""
     if not context.user_data.get("awaiting_receipt"):
         return
 
@@ -447,32 +438,30 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     caption = (
-        f"📥 رسید پرداخت\n"
+        "📥 رسید پرداخت\n"
         f"ID: <code>{user.id}</code>\n"
         f"👤 @{user.username or '—'}"
     )
-    markup = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{user.id}"),
-            InlineKeyboardButton("❌ رد",     callback_data=f"reject:{user.id}"),
-        ]
-    ])
+    markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{user.id}"),
+        InlineKeyboardButton("❌ رد",  callback_data=f"reject:{user.id}")
+    ]])
 
     try:
         if update.message.photo:
             await context.bot.send_photo(
                 chat_id=ADMIN_ID,
-                photo=update.message.photo[-1].file_id,
+                photo=update.message.photo[-1].file_id,  # بزرگ‌ترین سایز
                 caption=caption,
                 reply_markup=markup,
-                parse_mode=ParseMode.HTML,
+                parse_mode=ParseMode.HTML
             )
         else:
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
                 text=f"{caption}\n📝 {update.message.text}",
                 reply_markup=markup,
-                parse_mode=ParseMode.HTML,
+                parse_mode=ParseMode.HTML
             )
         await update.message.reply_text("✅ رسید شما ثبت شد، منتظر بررسی مدیر باشید.")
     except Exception as e:
@@ -481,21 +470,27 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     finally:
         context.user_data["awaiting_receipt"] = False
 
-# ---------- callback handler ------------------------------------------------#
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    action, uid_str = query.data.split(":")
-    uid = int(uid_str)
-    if action == "approve":
-        chat = await context.bot.get_chat(uid)
-        save_subscription(uid, chat.username, days=180)
-        await context.bot.send_message(uid, "✅ اشتراک شما تایید شد.")
-        await query.edit_message_caption("✅ رسید تایید شد.")
-    else:
-        await context.bot.send_message(uid, "❌ متاسفیم، رسید شما رد شد.")
-        await query.edit_message_caption("❌ رسید رد شد.")
+    action, user_id_str = query.data.split(":")
+    user_id = int(user_id_str)
+    is_approve = action == "approve"
+
+    try:
+        if is_approve:
+            # گرفتن username از تلگرام
+            chat = await context.bot.get_chat(user_id)
+            save_subscription(user_id, chat.username, days=180)
+            await context.bot.send_message(user_id, "✅ اشتراک شما تایید شد.")
+            await query.edit_message_caption("✅ رسید تایید شد.")
+        else:
+            await context.bot.send_message(user_id, "❌ متاسفیم، رسید شما رد شد.")
+            await query.edit_message_caption("❌ رسید رد شد.")
+    except Exception as e:
+        logger.error("Callback handler error: %s", e)
+        await query.edit_message_reply_markup(reply_markup=None)
 
 # 🏷️ دستور وضعیت اشتراک
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -769,4 +764,3 @@ def main() -> None:
 # 🚀 اجرای تابع اصلی در صورت اجرای مستقیم فایل
 if __name__ == "__main__":
     main()
-
