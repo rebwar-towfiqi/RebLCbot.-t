@@ -2,23 +2,25 @@
 # -*- coding: utf-8 -*-
 """
 RebLawBot – Telegram bot that sells subscriptions and answers legal questions using OpenAI.
-Updated: 2025-05-12 (Fixed version)
+Version 2025-05-12
 """
 
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------#
+# 0. Imports                                                                 #
+# ---------------------------------------------------------------------------#
 import logging
 import os
 import sqlite3
-import threading
 from contextlib import contextmanager
-from datetime import datetime, timedelta, time as dtime
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
 
 import openai
 from dotenv import load_dotenv
-from psycopg2 import OperationalError
 from psycopg2.pool import SimpleConnectionPool
 from telegram import (
     InlineKeyboardButton,
@@ -32,14 +34,17 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
-    JobQueue,
     MessageHandler,
     filters,
 )
 
+# ---------------------------------------------------------------------------#
+# 1. Environment & global configuration                                      #
+# ---------------------------------------------------------------------------#
 load_dotenv()
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    level=logging.INFO,
 )
 logger = logging.getLogger("RebLawBot")
 
@@ -53,22 +58,20 @@ def getenv_or_die(key: str) -> str:
 
 CFG = {
     "BOT_TOKEN": getenv_or_die("BOT_TOKEN"),
-    "ADMIN_ID": getenv_or_die("ADMIN_ID"),
+    "ADMIN_ID": int(getenv_or_die("ADMIN_ID")),
     "OPENAI_API_KEY": getenv_or_die("OPENAI_API_KEY"),
     "DATABASE_URL": getenv_or_die("DATABASE_URL"),
     "BANK_CARD_NUMBER": getenv_or_die("BANK_CARD_NUMBER"),
-    "USE_WEBHOOK": os.getenv("USE_WEBHOOK", "false").lower() == "true",
-    "WEBHOOK_URL": os.getenv("WEBHOOK_URL", ""),
 }
 
-ADMIN_ID_INT = int(CFG["ADMIN_ID"])
 client = openai.OpenAI(api_key=CFG["OPENAI_API_KEY"])
 
+# ---------------------------------------------------------------------------#
+# 2. Application DB (PostgreSQL → fallback SQLite)                           #
+# ---------------------------------------------------------------------------#
 SQLITE_PATH = Path("users.db")
 POOL: Optional[SimpleConnectionPool] = None
-DB_TYPE = ""
-_SQLITE_CONN: Optional[sqlite3.Connection] = None
-_SQLITE_LOCK = threading.RLock()
+DB_TYPE = ""  # "postgres" or "sqlite"
 
 
 def _ensure_schema(conn):
@@ -85,7 +88,7 @@ def _ensure_schema(conn):
     )
     cur.execute(
         """CREATE TABLE IF NOT EXISTS questions (
-               id        INTEGER PRIMARY KEY AUTOINCREMENT,
+               id        BIGSERIAL PRIMARY KEY,
                user_id   BIGINT,
                question  TEXT,
                answer    TEXT,
@@ -96,31 +99,36 @@ def _ensure_schema(conn):
 
 
 def init_db():
-    global DB_TYPE, POOL, _SQLITE_CONN
+    """Initialise database and detect backend."""
+    global DB_TYPE, POOL
     dsn = CFG["DATABASE_URL"].strip()
     try:
-        POOL = SimpleConnectionPool(1, 10, dsn=dsn, sslmode="require", connect_timeout=10)
+        POOL = SimpleConnectionPool(
+            1, 10, dsn=dsn, sslmode="require", connect_timeout=10
+        )
         with POOL.getconn() as conn:
             _ensure_schema(conn)
         DB_TYPE = "postgres"
-        logger.info("✅ Successfully connected to PostgreSQL.")
-    except OperationalError as exc:
-        logger.warning("PostgreSQL unavailable (%s), switching to SQLite.", exc)
+        logger.info("✅ Connected to PostgreSQL")
+    except Exception as exc:
+        logger.warning("PostgreSQL unavailable: %r → switching to SQLite.", exc)
         SQLITE_PATH.touch(exist_ok=True)
         DB_TYPE = "sqlite"
-        _SQLITE_CONN = sqlite3.connect(
+        with sqlite3.connect(
             SQLITE_PATH,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             check_same_thread=False,
-        )
-        _SQLITE_CONN.execute("PRAGMA foreign_keys=ON")
-        _ensure_schema(_SQLITE_CONN)
-        logger.info("✅ Using SQLite database at %s", SQLITE_PATH)
+        ) as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            _ensure_schema(conn)
+        logger.info("✅ Using local SQLite: %s", SQLITE_PATH)
 
 
 @contextmanager
 def get_conn() -> Generator:
+    """Context manager returning a DB connection with auto-commit."""
     if DB_TYPE == "postgres":
+        assert POOL is not None
         conn = POOL.getconn()
         try:
             yield conn
@@ -128,15 +136,21 @@ def get_conn() -> Generator:
             conn.commit()
             POOL.putconn(conn)
     else:
-        with _SQLITE_LOCK:
-            yield _SQLITE_CONN
-            _SQLITE_CONN.commit()
+        conn = sqlite3.connect(
+            SQLITE_PATH,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+            check_same_thread=False,
+        )
+        try:
+            yield conn
+        finally:
+            conn.commit()
+            conn.close()
 
 
 # ---------------------------------------------------------------------------#
-# 3. Laws database (read-only SQLite)
+# 3. Laws database (read-only SQLite)                                        #
 # ---------------------------------------------------------------------------#
-
 LAWS_DB = sqlite3.connect("iran_laws.db", check_same_thread=False)
 
 
@@ -149,67 +163,15 @@ def lookup(code: str, art_id: int) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------#
-# 4. i18n helpers
+# 4. Data helpers                                                            #
 # ---------------------------------------------------------------------------#
-
-TEXTS = {
-    "fa": {
-        "welcome": "👋 به RebLawBot خوش آمدید!",
-        "help": "از منوی اصلی یا دستورات زیر استفاده کنید:",
-        "buy": "<b>📌 روش خرید اشتراک:</b>\n• کارت‌به‌کارت ۳۰۰٬۰۰۰ تومان → <code>{card}</code>\nپس از پرداخت، روی «ارسال رسید» بزنید یا دستور /send_receipt را ارسال کنید.",
-        "enter_receipt": "🖼️ لطفاً تصویر یا متن رسید را همین‌جا ارسال کنید.\nپس از تأیید مدیر، اشتراک شما فعال خواهد شد.",
-        "receipt_ok": "✅ رسید دریافت شد؛ پس از بررسی تأیید می‌شود.",
-        "no_subscription": "❌ ابتدا اشتراک تهیه کنید.",
-        "ask_prompt": "✍🏻 سؤال خود را ارسال کنید…",
-        "subscription_ok": "✅ اشتراک شما تا تاریخ {date} معتبر است.",
-        "subscription_none": "❌ اشتراک فعالی ثبت نشده است.",
-        "resources_empty": "هیچ سند حقوقی بارگذاری نشده است.",
-        "resources_list": "📚 فهرست منابع حقوقی موجود:\n{list}",
-        "invalid_article": "ماده پیدا نشد.",
-        "invalid_law_usage": "📌 دستور را این‌گونه بنویسید:\n/law <کدقانون> <شماره‌ماده>\nمثال: /law civil 300",
-    },
-    "en": {
-        "welcome": "👋 Welcome to RebLawBot!",
-        "help": "Use the inline buttons or commands.",
-        "buy": "<b>📌 How to buy subscription:</b>\n• Bank transfer – 300,000 Toman → <code>{card}</code>\nAfter payment click “Send Receipt” or /send_receipt.",
-        "enter_receipt": "🖼️ Please send the receipt image or text here.\nSubscription activates after admin approval.",
-        "receipt_ok": "✅ Receipt received. Awaiting approval.",
-        "no_subscription": "❌ Please purchase a subscription first.",
-        "ask_prompt": "✍🏻 Please type your legal question…",
-        "subscription_ok": "✅ Your subscription is valid until {date}.",
-        "subscription_none": "❌ No active subscription found.",
-        "resources_empty": "No legal documents uploaded yet.",
-        "resources_list": "📚 Available legal documents:\n{list}",
-        "invalid_article": "Article not found.",
-        "invalid_law_usage": "Usage: /law <code> <article_id> e.g. /law civil 300",
-    },
-}
-
-
-def get_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
-    return context.user_data.get("lang") or (
-        "en" if (update.effective_user.language_code or "").startswith("en") else "fa"
-    )
-
-
-def tr(key: str, lang: str, **fmt) -> str:
-    return TEXTS.get(lang, TEXTS["fa"]).get(key, key).format(**fmt)
-
-
-# ---------------------------------------------------------------------------#
-# 5. Data helpers
-# ---------------------------------------------------------------------------#
-
 def _dt(val):
     if isinstance(val, datetime):
         return val
     try:
         return datetime.fromisoformat(val)
     except Exception:
-        try:
-            return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return datetime.utcnow()
+        return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
 
 
 def save_subscription(uid: int, username: Optional[str], days: int = 60) -> None:
@@ -218,11 +180,13 @@ def save_subscription(uid: int, username: Optional[str], days: int = 60) -> None
         cur = conn.cursor()
         if DB_TYPE == "postgres":
             cur.execute(
-                """INSERT INTO subscriptions (user_id, username, expires_at)
-                       VALUES (%s,%s,%s)
-                       ON CONFLICT (user_id) DO UPDATE
-                       SET username=COALESCE(EXCLUDED.username,subscriptions.username),
-                           expires_at=EXCLUDED.expires_at""",
+                """
+                INSERT INTO subscriptions (user_id, username, expires_at)
+                  VALUES (%s, %s, %s)
+                  ON CONFLICT (user_id) DO UPDATE
+                  SET username = COALESCE(EXCLUDED.username, subscriptions.username),
+                      expires_at = EXCLUDED.expires_at
+                """,
                 (uid, username, exp),
             )
         else:
@@ -272,9 +236,8 @@ def save_question(uid: int, q: str, a: str) -> None:
 
 
 # ---------------------------------------------------------------------------#
-# 6. Utility helpers
+# 5. Utility helpers                                                         #
 # ---------------------------------------------------------------------------#
-
 def get_reply(update: Update) -> Tuple[Message, bool]:
     return (
         (update.callback_query.message, True)
@@ -283,12 +246,9 @@ def get_reply(update: Update) -> Tuple[Message, bool]:
     )
 
 
-def reply_target(update: Update) -> Tuple[Message, bool]:
-    return get_reply(update)
-
-
 def chunks(text: str, limit: int = 4096) -> List[str]:
     import textwrap
+
     if len(text) <= limit:
         return [text]
     return textwrap.wrap(text, limit - 20, break_long_words=False)
@@ -301,9 +261,8 @@ async def send_long(update: Update, text: str, **kw):
 
 
 # ---------------------------------------------------------------------------#
-# 7. Menu & static texts
+# 6. Menu & static texts                                                     #
 # ---------------------------------------------------------------------------#
-
 class Menu(Enum):
     BUY = "menu_buy"
     SEND_RECEIPT = "menu_send_receipt"
@@ -327,51 +286,54 @@ def main_menu() -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------------------------#
-# 8. Handlers – commands & callbacks
+# 7. Handlers – commands & callbacks                                         #
 # ---------------------------------------------------------------------------#
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
-    lang = get_lang(update, context)
-    context.user_data["lang"] = lang
-    await msg.reply_text(tr("welcome", lang), reply_markup=main_menu())
+    await msg.reply_text("👋 به RebLawBot خوش آمدید!", reply_markup=main_menu())
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = get_lang(update, context)
-    await update.message.reply_text(tr("help", lang))
+    await update.message.reply_text("از دستور /start یا دکمه‌های منو استفاده کنید.")
 
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
-    lang = get_lang(update, context)
     await msg.reply_text(
-        tr("buy", lang, card=CFG["BANK_CARD_NUMBER"]),
+        (
+            "<b>📌 روش خرید اشتراک:</b>\n"
+            f"• کارت‌به‌کارت ۳۰۰٬۰۰۰ تومان → <code>{CFG['BANK_CARD_NUMBER']}</code>\n"
+            "\nپس از پرداخت، روی «ارسال رسید» بزنید یا دستور /send_receipt را ارسال کنید."
+        ),
         parse_mode=ParseMode.HTML,
     )
 
 
 async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """یادآوری به کاربر برای ارسال تصویر/متن رسید."""
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
     context.user_data["awaiting_receipt"] = True
-    lang = get_lang(update, context)
-    await msg.reply_text(tr("enter_receipt", lang))
+    await msg.reply_text(
+        "🖼️ لطفاً تصویر یا متن رسید را همین‌جا ارسال کنید.\n"
+        "پس از تأیید مدیر، اشتراک شما فعال خواهد شد."
+    )
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    lang = get_lang(update, context)
     exp = get_subscription_expiry(uid)
     if exp and datetime.utcnow() < exp:
-        await update.message.reply_text(tr("subscription_ok", lang, date=exp.strftime("%Y-%m-%d")))
+        await update.message.reply_text(
+            f"✅ اشتراک شما تا تاریخ {exp:%Y-%m-%d} معتبر است."
+        )
     else:
-        await update.message.reply_text(tr("subscription_none", lang))
+        await update.message.reply_text("❌ اشتراک فعالی ثبت نشده است.")
 
 
 LEGAL_DOCS_PATH = Path("legal_documents")
@@ -379,85 +341,83 @@ LEGAL_DOCS_PATH = Path("legal_documents")
 
 async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     docs = sorted(d.stem for d in LEGAL_DOCS_PATH.glob("*.txt"))
-    lang = get_lang(update, context)
     if not docs:
-        await update.message.reply_text(tr("resources_empty", lang))
+        await update.message.reply_text("هیچ سند حقوقی بارگذاری نشده است.")
         return
     await send_long(
         update,
-        tr("resources_list", lang, list="\n".join(f"• {name}" for name in docs)),
+        "📚 فهرست منابع حقوقی موجود:\n" + "\n".join(f"• {name}" for name in docs),
     )
 
 
 async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = get_lang(update, context)
     if not context.args:
-        await update.message.reply_text(tr("invalid_law_usage", lang))
+        await update.message.reply_text(
+            "📌 دستور را این‌گونه بنویسید:\n"
+            "/law <کدقانون> <شماره‌ماده>\n"
+            "مثال: /law civil 300"
+        )
         return
     code_key = context.args[0].lower()
     if len(context.args) < 2 or not context.args[1].isdigit():
-        await update.message.reply_text(tr("invalid_article", lang))
+        await update.message.reply_text("شماره ماده نامعتبر است.")
         return
     article_id = int(context.args[1])
     text = lookup(code_key, article_id)
     if text:
         await send_long(
-            update, f"📜 ماده {article_id} ({code_key.upper()})\n{text}"
+            update, f"📜 ماده {article_id} ({code_key.upper()})\n\n{text}"
         )
     else:
-        await update.message.reply_text(tr("invalid_article", lang))
+        await update.message.reply_text("ماده پیدا نشد.")
 
 
 TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
-LINK_BUY = "https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N "
 
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg, is_cb = reply_target(update)
+    msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
-    buy_markup = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🛒 خرید / Buy RLC", url=LINK_BUY)]]
-    )
     if TOKEN_IMG.exists():
-        await msg.reply_photo(TOKEN_IMG.open("rb"), reply_markup=buy_markup)
+        await msg.reply_photo(TOKEN_IMG.open("rb"))
     await msg.reply_text(
         (
-            "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n"
+            "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n\n"
             "<b>اهداف پروژه:</b>\n"
             "• سرمایه‌گذاری در نوآوری‌های حقوقی\n"
             "• نهادینه‌سازی عدالت روی بلاک‌چین\n"
-            "• سودآوری پایدار برای سرمایه‌گذاران\n"
-            "برای خرید مستقیم روی دکمهٔ زیر بزنید."
+            "• سودآوری پایدار برای سرمایه‌گذاران"
         ),
         parse_mode=ParseMode.HTML,
-        reply_markup=buy_markup,
     )
 
 
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """‎/ask [question]"""
     uid = update.effective_user.id
-    lang = get_lang(update, context)
     if not has_active_subscription(uid):
-        await update.message.reply_text(tr("no_subscription", lang))
+        await update.message.reply_text("❌ ابتدا اشتراک تهیه کنید.")
         return
+
     question = " ".join(context.args) if context.args else None
     if question:
         await answer_question(update, context, question)
     else:
         context.user_data["awaiting_question"] = True
-        await update.message.reply_text(tr("ask_prompt", lang))
+        await update.message.reply_text("✍🏻 سؤال خود را ارسال کنید…")
 
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Catch-all text handler:
+       • رسید پرداخت
+       • سؤال حقوقی (در حالت انتظار)
+    """
     if context.user_data.get("awaiting_receipt"):
         context.user_data.pop("awaiting_receipt", None)
-        if update.message.photo or update.message.text:
-            await update.message.forward(ADMIN_ID_INT)
-            lang = get_lang(update, context)
-            await update.message.reply_text(tr("receipt_ok", lang))
-        else:
-            await update.message.reply_text("⚠️ لطفاً یک تصویر یا متن رسید ارسال کنید.")
+        # اینجا می‌توانید رسید را به مدیر فوروارد و در DB ذخیره کنید
+        await update.message.forward(CFG["ADMIN_ID"])
+        await update.message.reply_text("✅ رسید دریافت شد؛ پس از بررسی تأیید می‌شود.")
         return
 
     if context.user_data.get("awaiting_question"):
@@ -468,56 +428,26 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def answer_question(
     update: Update, context: ContextTypes.DEFAULT_TYPE, question: str
 ):
+    """Send question to ChatGPT, save answer, and reply."""
     uid = update.effective_user.id
-    lang = get_lang(update, context)
-    if not has_active_subscription(uid):
-        await update.message.reply_text(tr("no_subscription", lang))
-        return
+    await update.message.chat.send_action(ChatAction.TYPING)
 
-    try:
-        await update.message.chat.send_action(ChatAction.TYPING)
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": question}],
-            temperature=0.2,
-            max_tokens=1024,
-        )
-        answer = resp.choices[0].message.content.strip()
-        save_question(uid, question, answer)
-        await send_long(update, answer)
-    except Exception as e:
-        logger.error(f"OpenAI Error: {e}")
-        await update.message.reply_text("❌ خطایی در پردازش سوال شما رخ داده است.")
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": question}],
+        temperature=0.2,
+        max_tokens=1024,
+    )
+    answer = resp.choices[0].message.content.strip()
+    save_question(uid, question, answer)
+    await send_long(update, answer)
 
 
-async def daily_cleanup(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.utcnow()
-    with get_conn() as conn:
-        cur = conn.cursor()
-        sql = (
-            "DELETE FROM subscriptions WHERE expires_at < %s"
-            if DB_TYPE == "postgres"
-            else "DELETE FROM subscriptions WHERE expires_at < ?"
-        )
-        cur.execute(sql, (now,))
-    logger.info("🧹 Daily cleanup completed: removed expired subscriptions")
-
-
-async def approve_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID_INT:
-        await update.message.reply_text("🚫 دسترسی غیرمجاز.")
-        return
-    if len(context.args) < 1 or not context.args[0].isdigit():
-        await update.message.reply_text("📌 دستور: /approve <user_id>")
-        return
-    uid = int(context.args[0])
-    save_subscription(uid, None, days=60)
-    await update.message.reply_text(f"✅ اشتراک کاربر {uid} فعال شد.")
-
-
+# ----------------- CallbackQuery router ----------------- #
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.callback_query.data
     await update.callback_query.answer()
+
     if data == Menu.BUY.value:
         await buy(update, context)
     elif data == Menu.SEND_RECEIPT.value:
@@ -527,7 +457,7 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == Menu.ASK.value:
         context.user_data["awaiting_question"] = True
         msg, _ = get_reply(update)
-        msg.reply_text("✍🏻 سؤال خود را ارسال کنید…")
+        await msg.reply_text("✍🏻 سؤال خود را ارسال کنید…")
     elif data == Menu.RESOURCES.value:
         await resources_cmd(update, context)
     elif data == Menu.TOKEN.value:
@@ -535,10 +465,10 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------#
-# 9. Dispatcher registration
+# 8. Dispatcher registration                                                 #
 # ---------------------------------------------------------------------------#
-
 def register_handlers(app: Application):
+    # commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("buy", buy))
@@ -547,22 +477,25 @@ def register_handlers(app: Application):
     app.add_handler(CommandHandler("resources", resources_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("law", law_document))
-    app.add_handler(CommandHandler("approve", approve_cmd))  # New admin command
+
+    # callback queries
     app.add_handler(CallbackQueryHandler(menu_router))
+
+    # text (generic)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
 
-    job_queue = app.job_queue
-    if job_queue:
-        job_queue.run_daily(daily_cleanup, time=dtime(hour=3, minute=0))
-
 
 # ---------------------------------------------------------------------------#
-# 10. Main
+# 9. Main                                                                    #
 # ---------------------------------------------------------------------------#
-
 def main() -> None:
     init_db()
     application = Application.builder().token(CFG["BOT_TOKEN"]).build()
     register_handlers(application)
+
     logger.info("🤖 Bot started …")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()
