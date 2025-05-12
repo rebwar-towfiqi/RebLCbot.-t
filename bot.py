@@ -13,6 +13,20 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
+from openai import OpenAI
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-4.1",
+    input="Write a one-sentence bedtime story about a unicorn."
+)
+
+print(response.output_text)
+response = client.responses.create(
+    model="gpt-4.1",
+    input="Write a one-sentence bedtime story about a unicorn."
+)
+print(response.output_text)
 from typing import Generator, List, Optional, Tuple
 import openai
 from dotenv import load_dotenv
@@ -546,7 +560,7 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4.1",
             temperature=0,
             messages=[{"role": "user", "content": question}]
         )
@@ -579,7 +593,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1️⃣ اگر کاربر در حالت "انتظار رسید" است
     if context.user_data.get("awaiting_receipt"):
         context.user_data.pop("awaiting_receipt", None)
-        await update.message.forward(CFG["ADMIN_ID"])
+        await update.message.forward(["ADMIN_ID"])
         await update.message.reply_text("✅ رسید دریافت شد؛ پس از بررسی تأیید می‌شود.")
         logger.info(f"Receipt received from user {user_id}")
         return
