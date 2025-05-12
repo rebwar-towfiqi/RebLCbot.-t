@@ -513,10 +513,14 @@ def register_handlers(app: Application):
 
 def main() -> None:
     init_db()
-    application = Application.builder().token(CFG["BOT_TOKEN"]).build()
+
+    application = (
+        Application.builder()
+        .token(CFG["BOT_TOKEN"])
+        .job_queue(JobQueue())  # ← اصلاح کلیدی
+        .build()
+    )
+
     register_handlers(application)
     logger.info("🤖 Bot started …")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
-    main()
