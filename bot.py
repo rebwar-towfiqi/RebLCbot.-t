@@ -6,10 +6,6 @@ Version 2025‑05‑12 (compat‑OpenAI 1.14)
 """
 
 from __future__ import annotations
-
-# ---------------------------------------------------------------------------#
-# 0. Imports                                                                 #
-# ---------------------------------------------------------------------------#
 import logging
 import os
 import sqlite3
@@ -18,10 +14,9 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
-
+import openai
 from dotenv import load_dotenv
 from psycopg2.pool import SimpleConnectionPool
-from openai import OpenAI, OpenAIError, AuthenticationError, RateLimitError
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -39,23 +34,25 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------#
-# 1. Environment & global configuration                                      #
+# 1️⃣ Environment & Global Configuration                                      #
 # ---------------------------------------------------------------------------#
 load_dotenv()
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    level=logging.INFO,
+    level=logging.DEBUG,
 )
 logger = logging.getLogger("RebLawBot")
 
-
 def getenv_or_die(key: str) -> str:
+    """
+    دریافت مقدار متغیر محیطی؛ در صورت عدم وجود، خطا ایجاد می‌کند.
+    """
     val = os.getenv(key)
     if not val:
         raise RuntimeError(f"Environment variable '{key}' is missing")
     return val
 
-
+# بارگذاری متغیرهای محیطی
 CFG = {
     "BOT_TOKEN": getenv_or_die("BOT_TOKEN"),
     "ADMIN_ID": int(getenv_or_die("ADMIN_ID")),
@@ -64,19 +61,23 @@ CFG = {
     "BANK_CARD_NUMBER": getenv_or_die("BANK_CARD_NUMBER"),
 }
 
-# ✅ global OpenAI client (sync; set timeout as desired)
-client = OpenAI(api_key=CFG["OPENAI_API_KEY"], timeout=30)
+# ایجاد یک کلاینت OpenAI به صورت همگام با تایم اوت مشخص شده
+client = openai.ChatCompletion.create
 
 # ---------------------------------------------------------------------------#
-# 2. Application DB (PostgreSQL → fallback SQLite)                           #
+# 2️⃣ Application DB (PostgreSQL → fallback SQLite)                           #
 # ---------------------------------------------------------------------------#
+
 SQLITE_PATH = Path("users.db")
 POOL: Optional[SimpleConnectionPool] = None
 DB_TYPE = ""  # "postgres" or "sqlite"
 
-
 def _ensure_schema(conn):
+    """
+    ایجاد جداول مورد نیاز در پایگاه داده.
+    """
     cur = conn.cursor()
+    # جدول اشتراک‌ها
     cur.execute(
         """CREATE TABLE IF NOT EXISTS subscriptions (
                user_id    BIGINT PRIMARY KEY,
@@ -87,6 +88,8 @@ def _ensure_schema(conn):
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_subscriptions_expires ON subscriptions (expires_at);"
     )
+    
+    # جدول سوالات حقوقی
     cur.execute(
         """CREATE TABLE IF NOT EXISTS questions (
                id        BIGSERIAL PRIMARY KEY,
@@ -97,13 +100,16 @@ def _ensure_schema(conn):
            );"""
     )
     conn.commit()
-
+    logger.info("✅ Database schema ensured.")
 
 def init_db():
-    """Initialise database and detect backend."""
+    """
+    راه‌اندازی پایگاه داده و انتخاب بین PostgreSQL یا SQLite.
+    """
     global DB_TYPE, POOL
     dsn = CFG["DATABASE_URL"].strip()
     try:
+        # تلاش برای اتصال به PostgreSQL
         POOL = SimpleConnectionPool(
             1, 10, dsn=dsn, sslmode="require", connect_timeout=10
         )
@@ -112,6 +118,7 @@ def init_db():
         DB_TYPE = "postgres"
         logger.info("✅ Connected to PostgreSQL")
     except Exception as exc:
+        # در صورت عدم موفقیت، سوئیچ به SQLite
         logger.warning("PostgreSQL unavailable: %r → switching to SQLite.", exc)
         SQLITE_PATH.touch(exist_ok=True)
         DB_TYPE = "sqlite"
@@ -124,10 +131,11 @@ def init_db():
             _ensure_schema(conn)
         logger.info("✅ Using local SQLite: %s", SQLITE_PATH)
 
-
 @contextmanager
 def get_conn() -> Generator:
-    """Context manager returning a DB connection with auto-commit."""
+    """
+    مدیریت اتصال به پایگاه داده با پشتیبانی از auto-commit.
+    """
     if DB_TYPE == "postgres":
         assert POOL is not None
         conn = POOL.getconn()
@@ -148,26 +156,48 @@ def get_conn() -> Generator:
             conn.commit()
             conn.close()
 
+# ---------------------------------------------------------------------------#
+# 3️⃣ Laws Database (Read-only SQLite)                                        #
+# ---------------------------------------------------------------------------#
 
-# ---------------------------------------------------------------------------#
-# 3. Laws database (read-only SQLite)                                        #
-# ---------------------------------------------------------------------------#
 LAWS_DB = sqlite3.connect("iran_laws.db", check_same_thread=False)
 
-
 def lookup(code: str, art_id: int) -> Optional[str]:
-    cur = LAWS_DB.execute(
-        "SELECT text FROM articles WHERE code=? AND id=?", (code.lower(), art_id)
-    )
-    row = cur.fetchone()
-    return row[0] if row else None
-
+    """
+    جستجو در پایگاه داده قوانین بر اساس کلید و شماره ماده.
+    
+    پارامترها:
+    - code: کلید قانون (مثلاً 'civil' برای قانون مدنی)
+    - art_id: شماره ماده مورد نظر
+    
+    بازگشت:
+    - متن ماده در صورت وجود، در غیر این صورت None
+    """
+    try:
+        cur = LAWS_DB.execute(
+            "SELECT text FROM articles WHERE code=? AND id=?", 
+            (code.lower(), art_id)
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error(f"❌ خطا در جستجوی ماده: {e}")
+        return None
 
 # ---------------------------------------------------------------------------#
-# 4. Data helpers                                                            #
+# 4️⃣ Data Helpers                                                            #
 # ---------------------------------------------------------------------------#
 
 def _dt(val):
+    """
+    تبدیل مقدار دریافتی به نوع datetime.
+    
+    پارامترها:
+    - val: مقدار ورودی که می‌تواند رشته یا datetime باشد.
+    
+    بازگشت:
+    - شیء datetime معادل مقدار ورودی
+    """
     if isinstance(val, datetime):
         return val
     try:
@@ -177,6 +207,14 @@ def _dt(val):
 
 
 def save_subscription(uid: int, username: Optional[str], days: int = 60) -> None:
+    """
+    ذخیره اشتراک کاربر در دیتابیس.
+    
+    پارامترها:
+    - uid: آیدی کاربر
+    - username: نام کاربری
+    - days: مدت زمان اشتراک بر حسب روز (پیش‌فرض 60 روز)
+    """
     exp = datetime.utcnow() + timedelta(days=days)
     with get_conn() as conn:
         cur = conn.cursor()
@@ -200,6 +238,15 @@ def save_subscription(uid: int, username: Optional[str], days: int = 60) -> None
 
 
 def has_active_subscription(uid: int) -> bool:
+    """
+    بررسی وضعیت اشتراک فعال برای کاربر.
+    
+    پارامترها:
+    - uid: آیدی کاربر
+    
+    بازگشت:
+    - True اگر اشتراک فعال است، در غیر این صورت False
+    """
     with get_conn() as conn:
         cur = conn.cursor()
         sql = (
@@ -213,6 +260,15 @@ def has_active_subscription(uid: int) -> bool:
 
 
 def get_subscription_expiry(uid: int) -> Optional[datetime]:
+    """
+    دریافت تاریخ انقضای اشتراک کاربر.
+    
+    پارامترها:
+    - uid: آیدی کاربر
+    
+    بازگشت:
+    - تاریخ انقضا در صورت وجود، در غیر این صورت None
+    """
     with get_conn() as conn:
         cur = conn.cursor()
         sql = (
@@ -226,6 +282,14 @@ def get_subscription_expiry(uid: int) -> Optional[datetime]:
 
 
 def save_question(uid: int, q: str, a: str) -> None:
+    """
+    ذخیره سؤال حقوقی و پاسخ آن در دیتابیس.
+    
+    پارامترها:
+    - uid: آیدی کاربر
+    - q: متن سؤال
+    - a: متن پاسخ
+    """
     with get_conn() as conn:
         cur = conn.cursor()
         sql = (
@@ -236,35 +300,62 @@ def save_question(uid: int, q: str, a: str) -> None:
         cur.execute(sql, (uid, q, a, datetime.utcnow()))
     logger.debug("💾 Q saved for %s", uid)
 
-
 # ---------------------------------------------------------------------------#
-# 5. Utility helpers                                                         #
+# 5️⃣ Utility Helpers                                                         #
 # ---------------------------------------------------------------------------#
 
 def get_reply(update: Update) -> Tuple[Message, bool]:
-    """برگرداندن شیء Message مناسب و فلگ is_callback."""
+    """
+    برگرداندن شیء Message مناسب و فلگ is_callback.
+    
+    پارامترها:
+    - update: آپدیت دریافتی از تلگرام
+    
+    بازگشت:
+    - یک تاپل شامل پیام و مقدار بولین که نشان می‌دهد آیا Callback Query است یا خیر
+    """
     return ((update.callback_query.message, True)
             if update.callback_query else (update.message, False))
 
 
 def chunks(text: str, limit: int = 4096) -> List[str]:
+    """
+    تقسیم متن‌های طولانی به بخش‌های کوچکتر برای ارسال در تلگرام.
+    
+    پارامترها:
+    - text: متن ورودی
+    - limit: حداکثر تعداد کاراکتر در هر پیام (پیش‌فرض 4096 کاراکتر)
+    
+    بازگشت:
+    - لیستی از بخش‌های کوچکتر متن
+    """
     import textwrap
-
     if len(text) <= limit:
         return [text]
     return textwrap.wrap(text, limit - 20, break_long_words=False)
 
 
 async def send_long(update: Update, text: str, **kw):
+    """
+    ارسال متن‌های طولانی به کاربر در قالب چند پیام جداگانه.
+    
+    پارامترها:
+    - update: آپدیت دریافتی از تلگرام
+    - text: متن طولانی
+    - kw: سایر تنظیمات ارسال پیام
+    """
     msg, _ = get_reply(update)
     for part in chunks(text):
         await msg.reply_text(part, **kw)
 
+# ---------------------------------------------------------------------------#
+# 6️⃣ Menu & Static Texts                                                     #
+# ---------------------------------------------------------------------------#
 
-# ---------------------------------------------------------------------------#
-# 6. Menu & static texts                                                     #
-# ---------------------------------------------------------------------------#
 class Menu(Enum):
+    """
+    تعریف منوهای اصلی بات به صورت Enums برای دسترسی راحت‌تر.
+    """
     BUY = "menu_buy"
     SEND_RECEIPT = "menu_send_receipt"
     STATUS = "menu_status"
@@ -274,6 +365,12 @@ class Menu(Enum):
 
 
 def main_menu() -> InlineKeyboardMarkup:
+    """
+    ساخت منوی اصلی بات تلگرام.
+    
+    بازگشت:
+    - یک شیء InlineKeyboardMarkup برای نمایش در تلگرام
+    """
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("🔐 خرید اشتراک", callback_data=Menu.BUY.value)],
@@ -285,21 +382,34 @@ def main_menu() -> InlineKeyboardMarkup:
         ]
     )
 
+# ---------------------------------------------------------------------------#
+# 7️⃣ Handlers – Commands & Callbacks                                        #
+# ---------------------------------------------------------------------------#
 
-# 7. Handlers – commands & callbacks
-# ----------------------------------
+# 🏷️ دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به دستور `/start` که منوی اصلی را به کاربر نمایش می‌دهد.
+    """
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
     await msg.reply_text("👋 به RebLawBot خوش آمدید!", reply_markup=main_menu())
 
 
+# 🏷️ دستور /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به دستور `/help` برای نمایش راهنمایی به کاربر.
+    """
     await update.message.reply_text("از دستور /start یا دکمه‌های منو استفاده کنید.")
 
 
+# 🏷️ دستور خرید اشتراک
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به خرید اشتراک.
+    """
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
@@ -313,7 +423,11 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# 🏷️ دستور ارسال رسید
 async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به ارسال رسید خرید.
+    """
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
@@ -324,7 +438,11 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# 🏷️ دستور وضعیت اشتراک
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به وضعیت اشتراک.
+    """
     msg, _ = get_reply(update)
     uid = update.effective_user.id
     exp = get_subscription_expiry(uid)
@@ -334,10 +452,13 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("❌ اشتراک فعالی ثبت نشده است.")
 
 
+# 🏷️ دستور منابع حقوقی
 LEGAL_DOCS_PATH = Path("legal_documents")
 
-
 async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به نمایش منابع حقوقی.
+    """
     msg, _ = get_reply(update)
     docs = sorted(d.stem for d in LEGAL_DOCS_PATH.glob("*.txt"))
     if not docs:
@@ -348,8 +469,18 @@ async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 فهرست منابع حقوقی موجود:\n" + "\n".join(f"• {name}" for name in docs),
     )
 
+# ---------------------------------------------------------------------------#
+# 8️⃣ Legal Questions & Law Documents                                        #
+# ---------------------------------------------------------------------------#
 
+# 🏷️ دستور /law برای جستجوی مواد قانونی
 async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به جستجو در مواد قانونی.
+    
+    مثال استفاده:
+    `/law civil 300`
+    """
     if not context.args:
         await update.message.reply_text(
             "📌 دستور را این‌گونه بنویسید:\n"
@@ -357,10 +488,12 @@ async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "مثال: /law civil 300"
         )
         return
+    
     code_key = context.args[0].lower()
     if len(context.args) < 2 or not context.args[1].isdigit():
-        await update.message.reply_text("شماره ماده نامعتبر است.")
+        await update.message.reply_text("❌ شماره ماده نامعتبر است.")
         return
+    
     article_id = int(context.args[1])
     text = lookup(code_key, article_id)
     if text:
@@ -368,13 +501,16 @@ async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update, f"📜 ماده {article_id} ({code_key.upper()})\n\n{text}"
         )
     else:
-        await update.message.reply_text("ماده پیدا نشد.")
+        await update.message.reply_text("❌ ماده پیدا نشد.")
 
 
+# 🏷️ هندلر درباره توکن
 TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 
-
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هندلر مربوط به نمایش اطلاعات توکن RebLawCoin.
+    """
     msg, _ = get_reply(update)
     if TOKEN_IMG.exists():
         await msg.reply_photo(TOKEN_IMG.open("rb"))
@@ -390,87 +526,153 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# 🏷️ هندلر سؤال حقوقی
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """‎/ask [question]"""
+    """
+    هندلر مربوط به سؤال حقوقی از طریق OpenAI.
+    """
     uid = update.effective_user.id
     if not has_active_subscription(uid):
         await update.message.reply_text("❌ ابتدا اشتراک تهیه کنید.")
         return
 
-    question = " ".join(context.args) if context.args else None
-    if question:
-        await answer_question(update, context, question)
-    else:
-        context.user_data["awaiting_question"] = True
-        await update.message.reply_text("✍🏻 سؤال خود را ارسال کنید…")
+    # دریافت سؤال از آرگومان‌ها
+    question = " ".join(context.args)
+    if not question:
+        await update.message.reply_text("❓ لطفاً سؤال حقوقی خود را بعد از دستور ارسال کنید.")
+        return
+    
+    await update.message.reply_text("🧠 در حال پردازش...")
 
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            temperature=0,
+            messages=[{"role": "user", "content": question}]
+        )
+        answer = response.choices[0].message.content.strip()
+        save_question(uid, question, answer)
+        await send_long(update, answer)
+    except openai.error.AuthenticationError:
+        logger.error("Invalid OpenAI API key")
+        await update.message.reply_text("❌ کلید OpenAI نامعتبر است.")
+    except openai.error.RateLimitError:
+        logger.warning("OpenAI rate limit")
+        await update.message.reply_text("❌ سقف درخواست موقتاً پر شده است.")
+    except Exception as e:
+        logger.error(f"OpenAI error: {e}")
+        await update.message.reply_text("❌ خطا در دریافت پاسخ.")
+
+# ---------------------------------------------------------------------------#
+# 9️⃣ Text Router & Automatic Responses                                      #
+# ---------------------------------------------------------------------------#
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """گیرندهٔ عمومی متون:
+    """
+    گیرندهٔ عمومی متون:
        • رسید پرداخت
        • سؤال حقوقی (در حالت انتظار)
     """
+    message = update.message.text
+    user_id = update.effective_user.id
+
+    # 1️⃣ اگر کاربر در حالت "انتظار رسید" است
     if context.user_data.get("awaiting_receipt"):
         context.user_data.pop("awaiting_receipt", None)
         await update.message.forward(CFG["ADMIN_ID"])
         await update.message.reply_text("✅ رسید دریافت شد؛ پس از بررسی تأیید می‌شود.")
+        logger.info(f"Receipt received from user {user_id}")
         return
 
+    # 2️⃣ اگر کاربر در حالت "انتظار سؤال حقوقی" است
     if context.user_data.get("awaiting_question"):
         context.user_data.pop("awaiting_question", None)
-        await answer_question(update, context, update.message.text)
+        await answer_question(update, context, message)
+        return
+
+    # 3️⃣ اگر هیچ‌کدام از حالت‌های بالا نبود، پیام خطا ارسال شود
+    await update.message.reply_text(
+        "❓ دستور نامشخص است. لطفاً از دکمه‌های منو استفاده کنید یا دستور مورد نظر خود را وارد کنید."
+    )
 
 
 async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str):
+    """
+    پردازش و پاسخ به سؤال حقوقی کاربر.
+    """
     uid = update.effective_user.id
     msg = update.effective_message
     await msg.chat.send_action(ChatAction.TYPING)
 
     try:
-        response = oai_client.chat.completions.create(
-            model=CFG["OPENAI_MODEL"],
-            messages=[
-                {"role": "system", "content": SYS_PROMPT},
-                {"role": "user", "content": question},
-            ],
-            max_tokens=512,
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            temperature=0,
+            messages=[{"role": "user", "content": question}]
         )
         answer = response.choices[0].message.content.strip()
-    except (AuthenticationError, RateLimitError) as err:
-        logger.warning("OpenAI error: %s", err)
-        await msg.reply_text("⚠️ خطا از سمت OpenAI – بعداً امتحان کنید.")
-        return
+        save_question(uid, question, answer)
+        await send_long(update, answer)
+        logger.info(f"✅ سؤال کاربر {uid} پردازش شد.")
+    except openai.error.AuthenticationError:
+        logger.error("Invalid OpenAI API key")
+        await msg.reply_text("❌ کلید OpenAI نامعتبر است.")
+    except openai.error.RateLimitError:
+        logger.warning("OpenAI rate limit")
+        await msg.reply_text("❌ سقف درخواست موقتاً پر شده است.")
+    except Exception as e:
+        logger.error(f"OpenAI error: {e}")
+        await msg.reply_text("❌ خطا در دریافت پاسخ.")
 
-    save_question(uid, question, answer)
-    await send_long(update, answer)
-
+# ---------------------------------------------------------------------------#
+# 🔟 Menu Router & Callbacks                                                 #
+# ---------------------------------------------------------------------------#
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    مسیریاب منو: هدایت به هندلر مرتبط بر اساس دکمه فشرده شده.
+    """
     data = update.callback_query.data
     await update.callback_query.answer()
 
+    # 1️⃣ خرید اشتراک
     if data == Menu.BUY.value:
         await buy(update, context)
+    
+    # 2️⃣ ارسال رسید
     elif data == Menu.SEND_RECEIPT.value:
         await send_receipt(update, context)
+    
+    # 3️⃣ وضعیت اشتراک
     elif data == Menu.STATUS.value:
         await status_cmd(update, context)
+    
+    # 4️⃣ سؤال حقوقی
     elif data == Menu.ASK.value:
         context.user_data["awaiting_question"] = True
         msg, _ = get_reply(update)
         await msg.reply_text("✍🏻 سؤال خود را ارسال کنید…")
+    
+    # 5️⃣ منابع حقوقی
     elif data == Menu.RESOURCES.value:
         await resources_cmd(update, context)
+    
+    # 6️⃣ درباره توکن
     elif data == Menu.TOKEN.value:
         await about_token(update, context)
 
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------#
+# 1️⃣1️⃣ Dispatcher Registration & Main Function                             #
+# ---------------------------------------------------------------------------#
 
-
-# 8. Dispatcher registration
-# --------------------------
 def register_handlers(app: Application):
-    # commands
+    """
+    ثبت تمام هندلرها در بات.
+    
+    پارامترها:
+    - app: نمونه‌ای از Application تلگرام
+    """
+    # ✅ ثبت دستورات اصلی
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("buy", buy))
@@ -479,26 +681,33 @@ def register_handlers(app: Application):
     app.add_handler(CommandHandler("resources", resources_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("law", law_document))
+    app.add_handler(CommandHandler("token", about_token))
 
-    # callback queries
+    # ✅ ثبت Callback Query Handler برای دکمه‌های منو
     app.add_handler(CallbackQueryHandler(menu_router))
 
-    # text (generic)
+    # ✅ ثبت Text Handler برای پیام‌های متنی
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
 
-# ---------------------------------------------------------------------------
 
-
-# 9. Main
-# -------
 def main() -> None:
+    """
+    تابع اصلی برای راه‌اندازی بات تلگرام.
+    """
+    # 1️⃣ مقداردهی پایگاه داده
     init_db()
+
+    # 2️⃣ ساخت اپلیکیشن تلگرام با توکن
     application = Application.builder().token(CFG["BOT_TOKEN"]).build()
+
+    # 3️⃣ ثبت تمام هندلرها
     register_handlers(application)
 
-    logger.info("🤖 Bot started …")
+    # 4️⃣ شروع اجرای بات
+    logger.info("🤖 RebLawBot started successfully …")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
+# 🚀 اجرای تابع اصلی در صورت اجرای مستقیم فایل
 if __name__ == "__main__":
     main()
