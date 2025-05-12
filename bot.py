@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 RebLawBot – Telegram bot that sells subscriptions and answers legal questions using OpenAI.
-Version 2025-05-12
+Version 2025‑05‑12 (compat‑OpenAI 1.14)
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
 
-import openai
 from dotenv import load_dotenv
 from psycopg2.pool import SimpleConnectionPool
+from openai import OpenAI, OpenAIError, AuthenticationError, RateLimitError
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -64,7 +64,8 @@ CFG = {
     "BANK_CARD_NUMBER": getenv_or_die("BANK_CARD_NUMBER"),
 }
 
-client = openai.OpenAI(api_key=CFG["OPENAI_API_KEY"])
+# ✅ global OpenAI client (sync; set timeout as desired)
+client = OpenAI(api_key=CFG["OPENAI_API_KEY"], timeout=30)
 
 # ---------------------------------------------------------------------------#
 # 2. Application DB (PostgreSQL → fallback SQLite)                           #
@@ -165,6 +166,7 @@ def lookup(code: str, art_id: int) -> Optional[str]:
 # ---------------------------------------------------------------------------#
 # 4. Data helpers                                                            #
 # ---------------------------------------------------------------------------#
+
 def _dt(val):
     if isinstance(val, datetime):
         return val
@@ -238,12 +240,11 @@ def save_question(uid: int, q: str, a: str) -> None:
 # ---------------------------------------------------------------------------#
 # 5. Utility helpers                                                         #
 # ---------------------------------------------------------------------------#
+
 def get_reply(update: Update) -> Tuple[Message, bool]:
-    return (
-        (update.callback_query.message, True)
-        if update.callback_query
-        else (update.message, False)
-    )
+    """برگرداندن شیء Message مناسب و فلگ is_callback."""
+    return ((update.callback_query.message, True)
+            if update.callback_query else (update.message, False))
 
 
 def chunks(text: str, limit: int = 4096) -> List[str]:
@@ -285,9 +286,8 @@ def main_menu() -> InlineKeyboardMarkup:
     )
 
 
-# ---------------------------------------------------------------------------#
-# 7. Handlers – commands & callbacks                                         #
-# ---------------------------------------------------------------------------#
+# 7. Handlers – commands & callbacks
+# ----------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = get_reply(update)
     if is_cb:
@@ -314,7 +314,6 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """یادآوری به کاربر برای ارسال تصویر/متن رسید."""
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
@@ -326,23 +325,23 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg, _ = get_reply(update)
     uid = update.effective_user.id
     exp = get_subscription_expiry(uid)
     if exp and datetime.utcnow() < exp:
-        await update.message.reply_text(
-            f"✅ اشتراک شما تا تاریخ {exp:%Y-%m-%d} معتبر است."
-        )
+        await msg.reply_text(f"✅ اشتراک شما تا {exp:%Y-%m-%d} معتبر است.")
     else:
-        await update.message.reply_text("❌ اشتراک فعالی ثبت نشده است.")
+        await msg.reply_text("❌ اشتراک فعالی ثبت نشده است.")
 
 
 LEGAL_DOCS_PATH = Path("legal_documents")
 
 
 async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg, _ = get_reply(update)
     docs = sorted(d.stem for d in LEGAL_DOCS_PATH.glob("*.txt"))
     if not docs:
-        await update.message.reply_text("هیچ سند حقوقی بارگذاری نشده است.")
+        await msg.reply_text("هیچ سند حقوقی بارگذاری نشده است.")
         return
     await send_long(
         update,
@@ -354,7 +353,7 @@ async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "📌 دستور را این‌گونه بنویسید:\n"
-            "/law <کدقانون> <شماره‌ماده>\n"
+            "/law <کلید> <شماره‌ماده>\n"
             "مثال: /law civil 300"
         )
         return
@@ -376,20 +375,18 @@ TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg, is_cb = get_reply(update)
-    if is_cb:
-        await update.callback_query.answer()
+    msg, _ = get_reply(update)
     if TOKEN_IMG.exists():
         await msg.reply_photo(TOKEN_IMG.open("rb"))
     await msg.reply_text(
-        (
-            "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n\n"
-            "<b>اهداف پروژه:</b>\n"
-            "• سرمایه‌گذاری در نوآوری‌های حقوقی\n"
-            "• نهادینه‌سازی عدالت روی بلاک‌چین\n"
-            "• سودآوری پایدار برای سرمایه‌گذاران"
-        ),
+        "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n\n"
+        "<b>اهداف پروژه:</b>\n"
+        "• سرمایه‌گذاری در نوآوری‌های حقوقی\n"
+        "• نهادینه‌سازی عدالت روی بلاک‌چین\n"
+        "• سودآوری پایدار برای سرمایه‌گذاران\n\n"
+        "<a href=\"https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N\">‏خرید RLC در Blum MemePad ↗</a>",
         parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
     )
 
 
@@ -409,13 +406,12 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Catch-all text handler:
+    """گیرندهٔ عمومی متون:
        • رسید پرداخت
        • سؤال حقوقی (در حالت انتظار)
     """
     if context.user_data.get("awaiting_receipt"):
         context.user_data.pop("awaiting_receipt", None)
-        # اینجا می‌توانید رسید را به مدیر فوروارد و در DB ذخیره کنید
         await update.message.forward(CFG["ADMIN_ID"])
         await update.message.reply_text("✅ رسید دریافت شد؛ پس از بررسی تأیید می‌شود.")
         return
@@ -425,25 +421,30 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await answer_question(update, context, update.message.text)
 
 
-async def answer_question(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, question: str
-):
-    """Send question to ChatGPT, save answer, and reply."""
+async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str):
     uid = update.effective_user.id
-    await update.message.chat.send_action(ChatAction.TYPING)
+    msg = update.effective_message
+    await msg.chat.send_action(ChatAction.TYPING)
 
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": question}],
-        temperature=0.2,
-        max_tokens=1024,
-    )
-    answer = resp.choices[0].message.content.strip()
+    try:
+        response = oai_client.chat.completions.create(
+            model=CFG["OPENAI_MODEL"],
+            messages=[
+                {"role": "system", "content": SYS_PROMPT},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=512,
+        )
+        answer = response.choices[0].message.content.strip()
+    except (AuthenticationError, RateLimitError) as err:
+        logger.warning("OpenAI error: %s", err)
+        await msg.reply_text("⚠️ خطا از سمت OpenAI – بعداً امتحان کنید.")
+        return
+
     save_question(uid, question, answer)
     await send_long(update, answer)
 
 
-# ----------------- CallbackQuery router ----------------- #
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.callback_query.data
     await update.callback_query.answer()
@@ -463,10 +464,11 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == Menu.TOKEN.value:
         await about_token(update, context)
 
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------#
-# 8. Dispatcher registration                                                 #
-# ---------------------------------------------------------------------------#
+
+# 8. Dispatcher registration
+# --------------------------
 def register_handlers(app: Application):
     # commands
     app.add_handler(CommandHandler("start", start))
@@ -484,10 +486,11 @@ def register_handlers(app: Application):
     # text (generic)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
 
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------#
-# 9. Main                                                                    #
-# ---------------------------------------------------------------------------#
+
+# 9. Main
+# -------
 def main() -> None:
     init_db()
     application = Application.builder().token(CFG["BOT_TOKEN"]).build()
