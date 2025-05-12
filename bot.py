@@ -12,7 +12,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from openai import OpenAI
 from typing import Generator, List, Optional, Tuple
 import openai
 from dotenv import load_dotenv
@@ -38,6 +37,13 @@ from telegram.ext import (
 # ---------------------------------------------------------------------------#
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.getLogger("RebLawBot")
+
 def getenv_or_die(key: str) -> str:
     """
     دریافت مقدار متغیر محیطی؛ در صورت عدم وجود، خطا ایجاد می‌کند.
@@ -47,6 +53,7 @@ def getenv_or_die(key: str) -> str:
         raise RuntimeError(f"Environment variable '{key}' is missing")
     return val
 
+# Load environment variables
 BOT_TOKEN = getenv_or_die("BOT_TOKEN")
 ADMIN_ID = int(getenv_or_die("ADMIN_ID"))
 OPENAI_API_KEY = getenv_or_die("OPENAI_API_KEY")
@@ -54,7 +61,7 @@ DATABASE_URL = getenv_or_die("DATABASE_URL")  # PostgreSQL connection string
 BANK_CARD_NUMBER = getenv_or_die("BANK_CARD_NUMBER")
 
 # Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = openai.ChatCompletion.create
 
 # ---------------------------------------------------------------------------#
 # 2️⃣ Application DB (PostgreSQL → fallback SQLite)                           #
@@ -303,7 +310,6 @@ def main_menu() -> InlineKeyboardMarkup:
 # ---------------------------------------------------------------------------#
 # 7️⃣ Handlers – Commands & Callbacks                                        #
 # ---------------------------------------------------------------------------#
-# 🏷️ دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به دستور `/start`.
@@ -313,14 +319,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer()
     await msg.reply_text("👋 به RebLawBot خوش آمدید!", reply_markup=main_menu())
 
-# 🏷️ دستور /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به دستور `/help`.
     """
     await update.message.reply_text("از دستور /start یا دکمه‌های منو استفاده کنید.")
 
-# 🏷️ دستور خرید اشتراک
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به خرید اشتراک.
@@ -337,7 +341,6 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML,
     )
 
-# 🏷️ دستور ارسال رسید
 async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به ارسال رسید.
@@ -409,7 +412,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error("Callback handler error: %s", e)
         await query.edit_message_reply_markup(reply_markup=None)
 
-# 🏷️ دستور وضعیت اشتراک
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به وضعیت اشتراک.
@@ -422,7 +424,6 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await msg.reply_text("❌ اشتراک فعالی ثبت نشده است.")
 
-# 🏷️ دستور منابع حقوقی
 LEGAL_DOCS_PATH = Path("legal_documents")
 async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -438,11 +439,7 @@ async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 فهرست منابع حقوقی موجود:\n" + "\n".join(f"• {name}" for name in docs),
     )
 
-# ---------------------------------------------------------------------------#
-# 8️⃣ Legal Questions & Law Documents                                        #
-# ---------------------------------------------------------------------------#
-# 🏷️ دستور /law برای جستجوی مواد قانونی
-async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def legale_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به جستجو در مواد قانونی.
     """
@@ -466,7 +463,6 @@ async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ ماده پیدا نشد.")
 
-# 🏷️ هندلر درباره توکن
 TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -486,7 +482,6 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disable_web_page_preview=True,
     )
 
-# 🏷️ هندلر سؤال حقوقی
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به سؤال حقوقی از طریق OpenAI.
@@ -501,7 +496,7 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("🧠 در حال پردازش...")
     try:
-        response = client.chat.completions.create(
+        response = client(
             model="gpt-3.5-turbo",
             temperature=0,
             messages=[{"role": "user", "content": question}]
@@ -519,14 +514,9 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"OpenAI error: {e}")
         await update.message.reply_text("❌ خطا در دریافت پاسخ.")
 
-# ---------------------------------------------------------------------------#
-# 9️⃣ Text Router & Automatic Responses                                      #
-# ---------------------------------------------------------------------------#
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    گیرندهٔ عمومی متون:
-       • رسید پرداخت
-       • سؤال حقوقی (در حالت انتظار)
+    گیرندهٔ عمومی متون.
     """
     message = update.message.text
     user_id = update.effective_user.id
@@ -552,7 +542,7 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
     msg = update.effective_message
     await msg.chat.send_action(ChatAction.TYPING)
     try:
-        response = client.chat.completions.create(
+        response = client(
             model="gpt-3.5-turbo",
             temperature=0,
             messages=[{"role": "user", "content": question}]
@@ -571,9 +561,6 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         logger.error(f"OpenAI error: {e}")
         await msg.reply_text("❌ خطا در دریافت پاسخ.")
 
-# ---------------------------------------------------------------------------#
-# 🔟 Menu Router & Callbacks                                                 #
-# ---------------------------------------------------------------------------#
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     مسیریاب منو: هدایت به هندلر مرتبط بر اساس دکمه فشرده شده.
@@ -595,9 +582,6 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == Menu.TOKEN.value:
         await about_token(update, context)
 
-# ---------------------------------------------------------------------------#
-# 1️⃣1️⃣ Dispatcher Registration & Main Function                             #
-# ---------------------------------------------------------------------------#
 def register_handlers(app: Application):
     """
     ثبت تمام هندلرها در بات.
@@ -609,7 +593,7 @@ def register_handlers(app: Application):
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("resources", resources_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
-    app.add_handler(CommandHandler("law", law_document))
+    app.add_handler(CommandHandler("law", legale_document))
     app.add_handler(CommandHandler("token", about_token))
     app.add_handler(CallbackQueryHandler(menu_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
