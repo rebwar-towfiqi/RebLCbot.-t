@@ -37,7 +37,7 @@ DEFAULT_JSONL_FILE = Path("iran_laws.jsonl")
 PERSIAN_TO_LATIN = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
 ARTICLE_RE = re.compile(r"ماده\s+(\d+)[\s\-—–.]*", re.MULTILINE)
 
-LOG_FORMAT = "% (asctime)s - %(levelname)s - %(message)s"
+LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"  # Fixed typo here
 logging.basicConfig(format=LOG_FORMAT, level=logging.INFO)
 logger = logging.getLogger("build_law_db")
 
@@ -67,7 +67,6 @@ def iter_text_files(directory: Path) -> Iterable[Path]:
     """Return sorted *.txt files (non-empty) in *directory*."""
     return sorted(p for p in directory.glob("*.txt") if p.stat().st_size > 0)
 
-
 # ---------------------------------------------------------------------------#
 # 2. Core build routine                                                       #
 # ---------------------------------------------------------------------------#
@@ -75,64 +74,56 @@ def iter_text_files(directory: Path) -> Iterable[Path]:
 def build_database(src_dir: Path, db_file: Path, jsonl_file: Path, *, overwrite: bool = False) -> None:
     start_ts = datetime.utcnow()
 
-    # -- Locate files ------------------------------------------------------- #
     txt_files = list(iter_text_files(src_dir))
     if not txt_files:
         logger.error("No .txt files found in %s", src_dir)
         sys.exit(1)
     logger.info("Found %d source files: %s", len(txt_files), ", ".join(f.name for f in txt_files))
 
-    # -- (Re)create database ------------------------------------------------ #
     if overwrite and db_file.exists():
         db_file.unlink()
-    conn = sqlite3.connect(db_file)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS articles (" "code TEXT," "id INTEGER," "text TEXT," "PRIMARY KEY(code, id))"
-    )
 
-    # -- Prepare JSONL writer ---------------------------------------------- #
-    json_mode = "w" if overwrite else "a"
-    jsonl_file.parent.mkdir(parents=True, exist_ok=True)
-    json_out = jsonl_file.open(json_mode, encoding="utf-8")
-
-    total_articles = 0
-    for txt_path in txt_files:
-        code = (
-            txt_path.stem.replace("_law", "")
-            .replace(" ", "_")
-            .lower()
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS articles (
+                code TEXT,
+                id INTEGER,
+                text TEXT,
+                PRIMARY KEY(code, id))"""
         )
-        seen_ids: set[int] = set()
-        content = txt_path.read_text(encoding="utf-8")
-        for aid, body in extract_articles(content):
-            if aid in seen_ids:
-                continue
-            seen_ids.add(aid)
-            try:
-                conn.execute("INSERT OR IGNORE INTO articles VALUES (?,?,?)", (code, aid, body))
-            except sqlite3.IntegrityError:
-                logger.debug("Duplicate (code=%s, id=%d) skipped", code, aid)
-                continue
-            json_out.write(json.dumps({"code": code, "id": aid, "text": body}, ensure_ascii=False) + "\n")
 
-        logger.info("%-20s → %4d ماده", code, len(seen_ids))
-        total_articles += len(seen_ids)
+        json_mode = "w" if overwrite else "a"
+        jsonl_file.parent.mkdir(parents=True, exist_ok=True)
 
-    conn.commit()
-    conn.close()
-    json_out.close()
+        with jsonl_file.open(json_mode, encoding="utf-8") as json_out:
+            total_articles = 0
+            for txt_path in txt_files:
+                code = (
+                    txt_path.stem.replace("_law", "")
+                    .replace(" ", "_")
+                    .lower()
+                )
+                seen_ids: set[int] = set()
+                content = txt_path.read_text(encoding="utf-8")
+                for aid, body in extract_articles(content):
+                    if aid in seen_ids:
+                        continue
+                    seen_ids.add(aid)
+                    conn.execute("INSERT OR IGNORE INTO articles VALUES (?,?,?)", (code, aid, body))
+                    json_out.write(json.dumps({"code": code, "id": aid, "text": body}, ensure_ascii=False) + "\n")
+
+                logger.info("%-20s → %4d ماده", code, len(seen_ids))
+                total_articles += len(seen_ids)
 
     duration = (datetime.utcnow() - start_ts).total_seconds()
     logger.info("Done! %d articles saved in %s & %s (%.1fs)", total_articles, db_file, jsonl_file, duration)
     logger.info("UTC timestamp: %s", datetime.utcnow().isoformat(" ", timespec="seconds"))
 
-
 # ---------------------------------------------------------------------------#
 # 3. CLI                                                                      #
 # ---------------------------------------------------------------------------#
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:  # noqa: D401
-    """Parse command-line arguments."""
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build SQLite & JSONL from Iranian law text files.")
     parser.add_argument("-s", "--src-dir", type=Path, default=DEFAULT_SRC_DIR, help="Directory containing *.txt files")
     parser.add_argument("-d", "--db-file", type=Path, default=DEFAULT_DB_FILE, help="Output SQLite database path")
@@ -141,12 +132,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:  # noqa: D4
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     return parser.parse_args(argv)
 
-
 # ---------------------------------------------------------------------------#
 # 4. Main entry                                                               #
 # ---------------------------------------------------------------------------#
 
-def main(argv: list[str] | None = None) -> None:  # pragma: no cover
+def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.debug:
         logger.setLevel(logging.DEBUG)
@@ -157,7 +147,6 @@ def main(argv: list[str] | None = None) -> None:  # pragma: no cover
         jsonl_file=args.jsonl_file,
         overwrite=args.overwrite,
     )
-
 
 if __name__ == "__main__":
     main()
