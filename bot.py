@@ -15,16 +15,13 @@ from enum import Enum
 from pathlib import Path
 from openai import OpenAI
 client = OpenAI()
-import openai
-
-openai.api_key = "your-api-key-here"
-
-response = openai.chat.completions.create(
-    model="gpt-3.5-turbo",
+response = client.chat.completions.create(
+    model="gpt-3.5-turbo" ,
     messages=[
         {"role": "user", "content": "Write a one-sentence bedtime story about a unicorn."}
     ]
 )
+
 from typing import Generator, List, Optional, Tuple
 import openai
 from dotenv import load_dotenv
@@ -436,19 +433,69 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # 🏷️ دستور ارسال رسید
-async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    هندلر مربوط به ارسال رسید خرید.
-    """
-    msg, is_cb = get_reply(update)
-    if is_cb:
-        await update.callback_query.answer()
+async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("لطفاً رسید را به صورت عکس یا متن ارسال کنید.")
     context.user_data["awaiting_receipt"] = True
-    await msg.reply_text(
-        "🖼️ لطفاً تصویر یا متن رسید را همین‌جا ارسال کنید.\n"
-        "پس از تأیید مدیر، اشتراک شما فعال خواهد شد."
-    )
 
+async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.user_data.get("awaiting_receipt"):
+        return
+
+    user = update.effective_user
+    if not (update.message.photo or update.message.text):
+        await update.message.reply_text("❌ فقط عکس یا متن قابل قبول است.")
+        return
+
+    caption = (
+        f"📥 رسید پرداخت\n"
+        f"ID: <code>{user.id}</code>\n"
+        f"👤 @{user.username or '—'}"
+    )
+    markup = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{user.id}"),
+            InlineKeyboardButton("❌ رد",     callback_data=f"reject:{user.id}"),
+        ]
+    ])
+
+    try:
+        if update.message.photo:
+            await context.bot.send_photo(
+                chat_id=ADMIN_ID,
+                photo=update.message.photo[-1].file_id,
+                caption=caption,
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"{caption}\n📝 {update.message.text}",
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML,
+            )
+        await update.message.reply_text("✅ رسید شما ثبت شد، منتظر بررسی مدیر باشید.")
+    except Exception as e:
+        logger.error("Receipt forwarding error: %s", e)
+        await update.message.reply_text("❌ خطا در ارسال رسید به مدیر.")
+    finally:
+        context.user_data["awaiting_receipt"] = False
+
+# ---------- callback handler ------------------------------------------------#
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    action, uid_str = query.data.split(":")
+    uid = int(uid_str)
+    if action == "approve":
+        chat = await context.bot.get_chat(uid)
+        save_subscription(uid, chat.username, days=180)
+        await context.bot.send_message(uid, "✅ اشتراک شما تایید شد.")
+        await query.edit_message_caption("✅ رسید تایید شد.")
+    else:
+        await context.bot.send_message(uid, "❌ متاسفیم، رسید شما رد شد.")
+        await query.edit_message_caption("❌ رسید رد شد.")
 
 # 🏷️ دستور وضعیت اشتراک
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -486,7 +533,7 @@ async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------#
 
 # 🏷️ دستور /law برای جستجوی مواد قانونی
-async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def legale_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     هندلر مربوط به جستجو در مواد قانونی.
     
@@ -591,7 +638,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1️⃣ اگر کاربر در حالت "انتظار رسید" است
     if context.user_data.get("awaiting_receipt"):
         context.user_data.pop("awaiting_receipt", None)
-        await update.message.forward(["ADMIN_ID"])
+        await update.message.forward(CFG["ADMIN_ID"])
         await update.message.reply_text("✅ رسید دریافت شد؛ پس از بررسی تأیید می‌شود.")
         logger.info(f"Receipt received from user {user_id}")
         return
