@@ -20,9 +20,10 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, time as dtime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple, Union
+from typing import Generator, List, Optional, Tuple
 import openai
 from dotenv import load_dotenv
+from psycopg2 import OperationalError
 from psycopg2.pool import SimpleConnectionPool
 from telegram import (
     InlineKeyboardButton,
@@ -40,10 +41,6 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-
-# ---------------------------------------------------------------------------#
-# 1. Environment & global configuration                                      #
-# ---------------------------------------------------------------------------#
 
 load_dotenv()
 logging.basicConfig(
@@ -69,10 +66,6 @@ CFG = {
 
 ADMIN_ID_INT = int(CFG["ADMIN_ID"])
 client = openai.OpenAI(api_key=CFG["OPENAI_API_KEY"])
-
-# ---------------------------------------------------------------------------#
-# 2. Application DB (PostgreSQL → fallback SQLite)                           #
-# ---------------------------------------------------------------------------#
 
 SQLITE_PATH = Path("users.db")
 POOL: Optional[SimpleConnectionPool] = None
@@ -105,7 +98,6 @@ def _ensure_schema(conn):
     conn.commit()
 
 def init_db():
-    """Initialise database and detect backend."""
     global DB_TYPE, POOL, _SQLITE_CONN
     dsn = CFG["DATABASE_URL"].strip()
     try:
@@ -113,9 +105,9 @@ def init_db():
         with POOL.getconn() as conn:
             _ensure_schema(conn)
         DB_TYPE = "postgres"
-        logger.info("✅ Connected to PostgreSQL")
-    except Exception as exc:
-        logger.warning("PostgreSQL unavailable: %r → switching to SQLite.", exc)
+        logger.info("✅ Successfully connected to PostgreSQL.")
+    except OperationalError as exc:
+        logger.warning("PostgreSQL unavailable (%s), switching to SQLite.", exc)
         SQLITE_PATH.touch(exist_ok=True)
         DB_TYPE = "sqlite"
         _SQLITE_CONN = sqlite3.connect(
@@ -125,12 +117,11 @@ def init_db():
         )
         _SQLITE_CONN.execute("PRAGMA foreign_keys=ON")
         _ensure_schema(_SQLITE_CONN)
-        logger.info("✅ Using local SQLite: %s", SQLITE_PATH)
+        logger.info("✅ Using SQLite database at %s", SQLITE_PATH)
 
 @contextmanager
 def get_conn() -> Generator:
     if DB_TYPE == "postgres":
-        assert POOL is not None
         conn = POOL.getconn()
         try:
             yield conn
@@ -138,7 +129,6 @@ def get_conn() -> Generator:
             conn.commit()
             POOL.putconn(conn)
     else:
-        assert _SQLITE_CONN is not None
         with _SQLITE_LOCK:
             yield _SQLITE_CONN
             _SQLITE_CONN.commit()
