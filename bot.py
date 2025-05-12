@@ -15,18 +15,16 @@ from enum import Enum
 from pathlib import Path
 from openai import OpenAI
 client = OpenAI()
+import openai
 
-response = client.responses.create(
-    model="gpt-4.1",
-    input="Write a one-sentence bedtime story about a unicorn."
-)
+openai.api_key = "your-api-key-here"
 
-print(response.output_text)
-response = client.responses.create(
-    model="gpt-4.1",
-    input="Write a one-sentence bedtime story about a unicorn."
+response = openai.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "user", "content": "Write a one-sentence bedtime story about a unicorn."}
+    ]
 )
-print(response.output_text)
 from typing import Generator, List, Optional, Tuple
 import openai
 from dotenv import load_dotenv
