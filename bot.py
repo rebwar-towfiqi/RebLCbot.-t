@@ -739,7 +739,7 @@ def register_handlers(app: Application):
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("resources", resources_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
-    app.add_handler(CommandHandler("law", law_document))
+    app.add_handler(CommandHandler("law", legale_document))
     app.add_handler(CommandHandler("token", about_token))
 
     # ✅ ثبت Callback Query Handler برای دکمه‌های منو
@@ -747,7 +747,6 @@ def register_handlers(app: Application):
 
     # ✅ ثبت Text Handler برای پیام‌های متنی
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
-
 
 def main() -> None:
     """
@@ -770,3 +769,4 @@ def main() -> None:
 # 🚀 اجرای تابع اصلی در صورت اجرای مستقیم فایل
 if __name__ == "__main__":
     main()
+
