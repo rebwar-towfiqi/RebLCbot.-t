@@ -2,13 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 RebLawBot – Telegram bot that sells subscriptions and answers legal questions using OpenAI.
-Updated: 2025-05-12
-• Admin approval workflow
-• Fallback SQLite with thread-safe global connection
-• Daily cleanup of expired subscriptions
-• Basic bilingual (fa/en) texts and menu
-• Long-message splitter & input truncation
-• Optional webhook via USE_WEBHOOK env var
+Updated: 2025-05-12 (Fixed version)
 """
 
 from __future__ import annotations
@@ -21,6 +15,7 @@ from datetime import datetime, timedelta, time as dtime
 from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
+
 import openai
 from dotenv import load_dotenv
 from psycopg2 import OperationalError
@@ -48,11 +43,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("RebLawBot")
 
+
 def getenv_or_die(key: str) -> str:
     val = os.getenv(key)
     if not val:
         raise RuntimeError(f"Environment variable '{key}' is missing")
     return val
+
 
 CFG = {
     "BOT_TOKEN": getenv_or_die("BOT_TOKEN"),
@@ -70,9 +67,9 @@ client = openai.OpenAI(api_key=CFG["OPENAI_API_KEY"])
 SQLITE_PATH = Path("users.db")
 POOL: Optional[SimpleConnectionPool] = None
 DB_TYPE = ""
-
 _SQLITE_CONN: Optional[sqlite3.Connection] = None
 _SQLITE_LOCK = threading.RLock()
+
 
 def _ensure_schema(conn):
     cur = conn.cursor()
@@ -97,6 +94,7 @@ def _ensure_schema(conn):
     )
     conn.commit()
 
+
 def init_db():
     global DB_TYPE, POOL, _SQLITE_CONN
     dsn = CFG["DATABASE_URL"].strip()
@@ -119,6 +117,7 @@ def init_db():
         _ensure_schema(_SQLITE_CONN)
         logger.info("✅ Using SQLite database at %s", SQLITE_PATH)
 
+
 @contextmanager
 def get_conn() -> Generator:
     if DB_TYPE == "postgres":
@@ -133,11 +132,13 @@ def get_conn() -> Generator:
             yield _SQLITE_CONN
             _SQLITE_CONN.commit()
 
+
 # ---------------------------------------------------------------------------#
-# 3. Laws database (read-only SQLite)                                        #
+# 3. Laws database (read-only SQLite)
 # ---------------------------------------------------------------------------#
 
 LAWS_DB = sqlite3.connect("iran_laws.db", check_same_thread=False)
+
 
 def lookup(code: str, art_id: int) -> Optional[str]:
     cur = LAWS_DB.execute(
@@ -146,8 +147,9 @@ def lookup(code: str, art_id: int) -> Optional[str]:
     row = cur.fetchone()
     return row[0] if row else None
 
+
 # ---------------------------------------------------------------------------#
-# 4. i18n helpers                                                            #
+# 4. i18n helpers
 # ---------------------------------------------------------------------------#
 
 TEXTS = {
@@ -183,16 +185,19 @@ TEXTS = {
     },
 }
 
+
 def get_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     return context.user_data.get("lang") or (
         "en" if (update.effective_user.language_code or "").startswith("en") else "fa"
     )
 
+
 def tr(key: str, lang: str, **fmt) -> str:
     return TEXTS.get(lang, TEXTS["fa"]).get(key, key).format(**fmt)
 
+
 # ---------------------------------------------------------------------------#
-# 5. Data helpers                                                            #
+# 5. Data helpers
 # ---------------------------------------------------------------------------#
 
 def _dt(val):
@@ -205,6 +210,7 @@ def _dt(val):
             return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
         except Exception:
             return datetime.utcnow()
+
 
 def save_subscription(uid: int, username: Optional[str], days: int = 60) -> None:
     exp = datetime.utcnow() + timedelta(days=days)
@@ -226,6 +232,7 @@ def save_subscription(uid: int, username: Optional[str], days: int = 60) -> None
             )
     logger.info("🔒 Subscription set: %s → %s", uid, exp)
 
+
 def has_active_subscription(uid: int) -> bool:
     with get_conn() as conn:
         cur = conn.cursor()
@@ -237,6 +244,7 @@ def has_active_subscription(uid: int) -> bool:
         cur.execute(sql, (uid,))
         row = cur.fetchone()
     return bool(row and datetime.utcnow() < _dt(row[0]))
+
 
 def get_subscription_expiry(uid: int) -> Optional[datetime]:
     with get_conn() as conn:
@@ -250,6 +258,7 @@ def get_subscription_expiry(uid: int) -> Optional[datetime]:
         row = cur.fetchone()
     return _dt(row[0]) if row else None
 
+
 def save_question(uid: int, q: str, a: str) -> None:
     with get_conn() as conn:
         cur = conn.cursor()
@@ -261,8 +270,9 @@ def save_question(uid: int, q: str, a: str) -> None:
         cur.execute(sql, (uid, q, a, datetime.utcnow()))
     logger.debug("💾 Q saved for %s", uid)
 
+
 # ---------------------------------------------------------------------------#
-# 6. Utility helpers                                                         #
+# 6. Utility helpers
 # ---------------------------------------------------------------------------#
 
 def get_reply(update: Update) -> Tuple[Message, bool]:
@@ -272,8 +282,10 @@ def get_reply(update: Update) -> Tuple[Message, bool]:
         else (update.message, False)
     )
 
+
 def reply_target(update: Update) -> Tuple[Message, bool]:
     return get_reply(update)
+
 
 def chunks(text: str, limit: int = 4096) -> List[str]:
     import textwrap
@@ -281,13 +293,15 @@ def chunks(text: str, limit: int = 4096) -> List[str]:
         return [text]
     return textwrap.wrap(text, limit - 20, break_long_words=False)
 
+
 async def send_long(update: Update, text: str, **kw):
     msg, _ = get_reply(update)
     for part in chunks(text):
         await msg.reply_text(part, **kw)
 
+
 # ---------------------------------------------------------------------------#
-# 7. Menu & static texts                                                     #
+# 7. Menu & static texts
 # ---------------------------------------------------------------------------#
 
 class Menu(Enum):
@@ -297,6 +311,7 @@ class Menu(Enum):
     ASK = "menu_ask"
     RESOURCES = "menu_resources"
     TOKEN = "menu_token"
+
 
 def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -310,18 +325,24 @@ def main_menu() -> InlineKeyboardMarkup:
         ]
     )
 
+
 # ---------------------------------------------------------------------------#
-# 8. Handlers – commands & callbacks                                         #
+# 8. Handlers – commands & callbacks
 # ---------------------------------------------------------------------------#
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = get_reply(update)
     if is_cb:
         await update.callback_query.answer()
-    await msg.reply_text(tr("welcome", get_lang(update, context)), reply_markup=main_menu())
+    lang = get_lang(update, context)
+    context.user_data["lang"] = lang
+    await msg.reply_text(tr("welcome", lang), reply_markup=main_menu())
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(tr("help", get_lang(update, context)))
+    lang = get_lang(update, context)
+    await update.message.reply_text(tr("help", lang))
+
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = get_reply(update)
@@ -333,6 +354,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML,
     )
 
+
 async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = get_reply(update)
     if is_cb:
@@ -340,6 +362,7 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["awaiting_receipt"] = True
     lang = get_lang(update, context)
     await msg.reply_text(tr("enter_receipt", lang))
+
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -350,7 +373,9 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(tr("subscription_none", lang))
 
+
 LEGAL_DOCS_PATH = Path("legal_documents")
+
 
 async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     docs = sorted(d.stem for d in LEGAL_DOCS_PATH.glob("*.txt"))
@@ -362,6 +387,7 @@ async def resources_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         tr("resources_list", lang, list="\n".join(f"• {name}" for name in docs)),
     )
+
 
 async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update, context)
@@ -376,13 +402,15 @@ async def law_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = lookup(code_key, article_id)
     if text:
         await send_long(
-            update, f"📜 ماده {article_id} ({code_key.upper()})\n\n{text}"
+            update, f"📜 ماده {article_id} ({code_key.upper()})\n{text}"
         )
     else:
         await update.message.reply_text(tr("invalid_article", lang))
 
+
 TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
 LINK_BUY = "https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N "
+
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg, is_cb = reply_target(update)
@@ -406,6 +434,7 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=buy_markup,
     )
 
+
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     lang = get_lang(update, context)
@@ -419,31 +448,47 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_question"] = True
         await update.message.reply_text(tr("ask_prompt", lang))
 
+
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("awaiting_receipt"):
         context.user_data.pop("awaiting_receipt", None)
-        await update.message.forward(ADMIN_ID_INT)
-        lang = get_lang(update, context)
-        await update.message.reply_text(tr("receipt_ok", lang))
+        if update.message.photo or update.message.text:
+            await update.message.forward(ADMIN_ID_INT)
+            lang = get_lang(update, context)
+            await update.message.reply_text(tr("receipt_ok", lang))
+        else:
+            await update.message.reply_text("⚠️ لطفاً یک تصویر یا متن رسید ارسال کنید.")
         return
+
     if context.user_data.get("awaiting_question"):
         context.user_data.pop("awaiting_question", None)
         await answer_question(update, context, update.message.text)
+
 
 async def answer_question(
     update: Update, context: ContextTypes.DEFAULT_TYPE, question: str
 ):
     uid = update.effective_user.id
-    await update.message.chat.send_action(ChatAction.TYPING)
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": question}],
-        temperature=0.2,
-        max_tokens=1024,
-    )
-    answer = resp.choices[0].message.content.strip()
-    save_question(uid, question, answer)
-    await send_long(update, answer)
+    lang = get_lang(update, context)
+    if not has_active_subscription(uid):
+        await update.message.reply_text(tr("no_subscription", lang))
+        return
+
+    try:
+        await update.message.chat.send_action(ChatAction.TYPING)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": question}],
+            temperature=0.2,
+            max_tokens=1024,
+        )
+        answer = resp.choices[0].message.content.strip()
+        save_question(uid, question, answer)
+        await send_long(update, answer)
+    except Exception as e:
+        logger.error(f"OpenAI Error: {e}")
+        await update.message.reply_text("❌ خطایی در پردازش سوال شما رخ داده است.")
+
 
 async def daily_cleanup(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.utcnow()
@@ -457,6 +502,7 @@ async def daily_cleanup(context: ContextTypes.DEFAULT_TYPE):
         cur.execute(sql, (now,))
     logger.info("🧹 Daily cleanup completed: removed expired subscriptions")
 
+
 async def approve_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID_INT:
         await update.message.reply_text("🚫 دسترسی غیرمجاز.")
@@ -467,6 +513,7 @@ async def approve_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = int(context.args[0])
     save_subscription(uid, None, days=60)
     await update.message.reply_text(f"✅ اشتراک کاربر {uid} فعال شد.")
+
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.callback_query.data
@@ -486,8 +533,9 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == Menu.TOKEN.value:
         await about_token(update, context)
 
+
 # ---------------------------------------------------------------------------#
-# 9. Dispatcher registration                                                 #
+# 9. Dispatcher registration
 # ---------------------------------------------------------------------------#
 
 def register_handlers(app: Application):
@@ -502,25 +550,19 @@ def register_handlers(app: Application):
     app.add_handler(CommandHandler("approve", approve_cmd))  # New admin command
     app.add_handler(CallbackQueryHandler(menu_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
-    
+
     job_queue = app.job_queue
     if job_queue:
         job_queue.run_daily(daily_cleanup, time=dtime(hour=3, minute=0))
 
+
 # ---------------------------------------------------------------------------#
-# 10. Main                                                                   #
+# 10. Main
 # ---------------------------------------------------------------------------#
 
 def main() -> None:
     init_db()
-
-    application = (
-        Application.builder()
-        .token(CFG["BOT_TOKEN"])
-        .job_queue(JobQueue())  # ← اصلاح کلیدی
-        .build()
-    )
-
+    application = Application.builder().token(CFG["BOT_TOKEN"]).build()
     register_handlers(application)
     logger.info("🤖 Bot started …")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
