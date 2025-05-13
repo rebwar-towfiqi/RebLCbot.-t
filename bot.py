@@ -497,10 +497,11 @@ WELCOME_EN = (
 BUY_TEXT_FA = (
     "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
     "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
-    f"<code>{TON_WALLET_ADDRESS}</code>\n\n"
+    f"<code>{"TON_WALLET_ADDRESS"}</code>\n\n"
+    f"<code>{"andBANK_CARD_NUMBER"}</code>\n\n"
     "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره‌کارت:\n"
 
-    f"<code>{BANK_CARD_NUMBER}</code>\n\n"
+
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
