@@ -515,6 +515,9 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = WELCOME_FA if lang == "fa" else WELCOME_EN
     await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
 
+TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
+BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
+
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
     BUY_TEXT_FA,
