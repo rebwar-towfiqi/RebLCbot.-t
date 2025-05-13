@@ -64,8 +64,8 @@ def getenv_or_die(key: str) -> str:
     if not value:
         raise RuntimeError(f"Environment variable {key!r} is missing")
     return value
-TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
+TON_WALLET_ADDRESS = getenv_or_die("TON_WALLET_ADDRESS")
+BANK_CARD_NUMBER = getenv_or_die("BANK_CARD_NUMBER")
 # ---------------------------------------------------------------------------#
 # 1. Database layer – PostgreSQL → SQLite fallback                           #
 # ---------------------------------------------------------------------------#
