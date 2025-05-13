@@ -64,8 +64,7 @@ def getenv_or_die(key: str) -> str:
     if not value:
         raise RuntimeError(f"Environment variable {key!r} is missing")
     return value
-TON_WALLET_ADDRESS = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD_NUMBER = getenv_or_die("BANK_CARD_NUMBER")
+
 # ---------------------------------------------------------------------------#
 # 1. Database layer – PostgreSQL → SQLite fallback                           #
 # ---------------------------------------------------------------------------#
@@ -480,7 +479,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # 5. Command handlers & menu router                                          #
 # ---------------------------------------------------------------------------#
 from telegram import ReplyKeyboardMarkup, KeyboardButton
-
+TON_WALLET_ADDRESS = getenv_or_die("TON_WALLET_ADDRESS")
+BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 # ─── متن‌های ثابت (FA/EN) ───────────────────────────────────────────────────
 WELCOME_FA = (
     "سلام! 👋\n"
@@ -499,6 +499,7 @@ BUY_TEXT_FA = (
     "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
     f"<code>{TON_WALLET_ADDRESS}</code>\n\n"
     "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره‌کارت:\n"
+
     f"<code>{BANK_CARD_NUMBER}</code>\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
