@@ -367,8 +367,13 @@ async def answer_question(
 # ---------------------------------------------------------------------------#
 # 4. Receipt flow – user → admin review → subscription grant                 #
 # ---------------------------------------------------------------------------#
-ADMIN_ID = int(getenv_or_die("ADMIN_ID"))          # آی‌دی تِلگرامی مدیر
-SUBS_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))   # طول پیش‌فرض اشتراک
+
+# ─── تنظیمات پیکربندی از .env ───────────────────────────────────────────────
+ADMIN_ID = int(getenv_or_die("ADMIN_ID"))
+SUBS_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
+
+TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
+BANK_CARD       = getenv_or_die("BANK_CARD_NUMBER")
 
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # فقط وقتی منتظر رسید هستیم یا عکس دریافت شده ادامه دهیم
@@ -492,12 +497,13 @@ WELCOME_EN = (
     "Purchase a subscription to ask legal questions.\n"
     "Please choose an option from the menu:"
 )
+
 BUY_TEXT_FA = (
     "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
     "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
-    "<code>TON_WALLET_ADDRESS</code>\n\n"
-    "۲️⃣ یا پرداخت آنلاین ۵۰۰٬۰۰۰ تومان با کارت بانکی از طریق لینک زیر:\n"
-    "<a href=\"BANK_CARD_NUMBER</a>\n\n"
+    f"<code>{TON_WALLET_ADDR}</code>\n\n"
+    "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره‌کارت زیر:\n"
+    f"<code>{BANK_CARD}</code>\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
 
@@ -515,14 +521,13 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = WELCOME_FA if lang == "fa" else WELCOME_EN
     await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
 
-TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
-
-async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-    BUY_TEXT_FA,
-    parse_mode=ParseMode.HTML,
-    disable_web_page_preview=True,
+BUY_TEXT_FA = (
+    "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
+    "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
+    f"<code>{TON_WALLET_ADDR}</code>\n\n"
+    "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره‌کارت زیر:\n"
+    f"<code>{BANK_CARD}</code>\n\n"
+    "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
