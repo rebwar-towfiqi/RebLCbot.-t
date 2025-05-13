@@ -596,7 +596,19 @@ def register_handlers(app: Application):
     app.add_handler(CommandHandler("law", legale_document))
     app.add_handler(CommandHandler("token", about_token))
     app.add_handler(CallbackQueryHandler(menu_router))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO | (filters.TEXT & ~filters.COMMAND),
+            handle_receipt
+        ),
+        group=1,   # اول اجرا شود
+    )
+
+    # هندلر عمومی بعد از آن
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
+        group=2,
+    )
 
 def main() -> None:
     """
