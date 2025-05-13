@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
-
+from telegram import ReplyKeyboardMarkup, KeyboardButton
 # ─── کتابخانه‌های خارجی ───────────────────────────────────────────────────────
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
@@ -478,9 +478,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # ---------------------------------------------------------------------------#
 # 5. Command handlers & menu router                                          #
 # ---------------------------------------------------------------------------#
-from telegram import ReplyKeyboardMarkup, KeyboardButton
-TON_WALLET_ADDRESS = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
+
 # ─── متن‌های ثابت (FA/EN) ───────────────────────────────────────────────────
 WELCOME_FA = (
     "سلام! 👋\n"
@@ -497,13 +495,12 @@ WELCOME_EN = (
 BUY_TEXT_FA = (
     "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
     "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
-    f"<code>{"TON_WALLET_ADDRESS"}</code>\n\n"
-    f"<code>{"andBANK_CARD_NUMBER"}</code>\n\n"
-    "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره‌کارت:\n"
-
-
+    "<code>TON_WALLET_ADDRESS</code>\n\n"
+    "۲️⃣ یا پرداخت آنلاین ۵۰۰٬۰۰۰ تومان با کارت بانکی از طریق لینک زیر:\n"
+    "<a href=\"BANK_CARD_NUMBER</a>\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
+
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
 MENU_KB = ReplyKeyboardMarkup(
     [
