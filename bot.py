@@ -13,7 +13,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
-import openai
+from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
+client = AsyncOpenAI()
 from dotenv import load_dotenv
 from psycopg2.pool import SimpleConnectionPool
 from telegram import (
@@ -23,15 +24,7 @@ from telegram import (
     Update,
 )
 from telegram.constants import ChatAction, ParseMode
-from telegram.ext import (
-    Application,
-    CallbackQueryHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
-
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 # ---------------------------------------------------------------------------#
 # 1️⃣ Environment & Global Configuration                                      #
 # ---------------------------------------------------------------------------#
@@ -59,9 +52,6 @@ ADMIN_ID = int(getenv_or_die("ADMIN_ID"))
 OPENAI_API_KEY = getenv_or_die("OPENAI_API_KEY")
 DATABASE_URL = getenv_or_die("DATABASE_URL")  # PostgreSQL connection string
 BANK_CARD_NUMBER = getenv_or_die("BANK_CARD_NUMBER")
-
-# Initialize OpenAI client
-client = openai.ChatCompletion.create
 
 # ---------------------------------------------------------------------------#
 # 2️⃣ Application DB (PostgreSQL → fallback SQLite)                           #
@@ -538,28 +528,50 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
     """
     پردازش و پاسخ به سؤال حقوقی کاربر.
     """
-    uid = update.effective_user.id
-    msg = update.effective_message
-    await msg.chat.send_action(ChatAction.TYPING)
+# 1. Client singleton ─ کلاینت غیرهمزمان یک‌بار ساخته می‌شود
+client = AsyncOpenAI()         # API‑Key را از متغیر OPENAI_API_KEY می‌خواند
+
+# 2. هِلس‌چک اختیاری (در startup ربات)
+async def check_openai() -> None:
     try:
-        response = client(
-            model="gpt-3.5-turbo",
-            temperature=0,
-            messages=[{"role": "user", "content": question}]
+        await client.models.retrieve("gpt-3.5-turbo")
+    except AuthenticationError:
+        raise RuntimeError("❌ کلید OpenAI نامعتبر است")
+    except APIError as exc:
+        raise RuntimeError(f"❌ خطای OpenAI: {exc}")
+
+# 3. تابع واحد برای درخواست پاسخ حقوقی
+async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
+    """
+    پرسیدن سؤال از GPT و برگشتِ متن پاسخ.
+    بلوک نمی‌کند (Async) و خطاهای متداول را ره‌گیری می‌کند.
+    """
+    system_msg = (
+        "You are an experienced Iranian lawyer. "
+        "Answer in formal Persian with citations to relevant statutes where possible."
+        if user_lang == "fa"
+        else "You are an experienced lawyer. Answer in clear English."
+    )
+
+    try:
+        rsp = await client.chat.completions.create(
+            model="gpt-3.5-turbo",           # یا مدل دلخواه
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": question},
+            ],
+            temperature=0.6,
+            max_tokens=1024,
         )
-        answer = response.choices[0].message.content.strip()
-        save_question(uid, question, answer)
-        await send_long(update, answer)
-        logger.info(f"✅ سؤال کاربر {uid} پردازش شد.")
-    except openai.error.AuthenticationError:
-        logger.error("Invalid OpenAI API key")
-        await msg.reply_text("❌ کلید OpenAI نامعتبر است.")
-    except openai.error.RateLimitError:
-        logger.warning("OpenAI rate limit")
-        await msg.reply_text("❌ سقف درخواست موقتاً پر شده است.")
-    except Exception as e:
-        logger.error(f"OpenAI error: {e}")
-        await msg.reply_text("❌ خطا در دریافت پاسخ.")
+        answer = rsp.choices[0].message.content.strip()
+        return answer
+
+    except RateLimitError:
+        return "❗️متأسفانه ظرفیت سرویس موقتاً پر است؛ لطفاً چند ثانیه دیگر مجدداً امتحان کنید."
+    except AuthenticationError:
+        return "❌ کلید OpenAI نامعتبر است؛ به مدیر اطلاع دهید."
+    except APIError as exc:
+        return f"⚠️ خطای سرویسی OpenAI: {exc}"
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
