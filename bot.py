@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from http import client
 import logging
-from mimetypes import init_db
+
 import os
 import sqlite3
 from contextlib import contextmanager
