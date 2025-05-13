@@ -2,23 +2,18 @@
 # -*- coding: utf-8 -*-
 """
 RebLawBot – Telegram bot that sells subscriptions and answers legal questions using OpenAI.
-Version 2025-05-13 – Fixed handler order, buy_cmd bug, and HTML formatting
+Version 2025-05-13 – Cleaned & Fixed
 """
 
 from __future__ import annotations
 
-
-from http import client
 import logging
-
 import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-
 from pathlib import Path
 from typing import Generator, Optional, Tuple, List
-from venv import logger
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
@@ -32,11 +27,18 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ContextTypes, filters
 )
+# ─── Load environment variables ─────────────────────────────
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 TON_WALLET_ADDR = os.getenv("TON_WALLET_ADDRESS", "TON_NOT_SET")
 BANK_CARD = os.getenv("BANK_CARD_NUMBER", "CARD_NOT_SET")
 SUBS_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
 
-# ─── تنظیم پایگاه داده SQLite ──────────────────────────────────────
+# ─── OpenAI Client ──────────────────────────────────────────
+client = AsyncOpenAI()
+
+# ─── Database ───────────────────────────────────────────────
 SQLITE_FILE = Path("users.db")
 _sqlite_lock = sqlite3.RLock()
 
@@ -54,8 +56,8 @@ def init_db():
         username         TEXT,
         first_name       TEXT,
         last_name        TEXT,
-
-        receipt_photo_id TEXT,
+  
+              receipt_photo_id TEXT,
         expire_at        TEXT
     );
     CREATE TABLE IF NOT EXISTS questions (
@@ -82,6 +84,7 @@ def upsert_user(user_id: int, username: str | None, first_name: str | None, last
                 last_name = excluded.last_name
         """, (user_id, username, first_name, last_name))
         conn.commit()
+
 def save_receipt_request(user_id: int, photo_id: str) -> None:
     with get_db() as conn:
         cur = conn.cursor()
@@ -91,6 +94,7 @@ def save_receipt_request(user_id: int, photo_id: str) -> None:
             WHERE user_id = ?
         """, (photo_id, user_id))
         conn.commit()
+
 def save_question(user_id: int, question: str, answer: str) -> None:
     with get_db() as conn:
         cur = conn.cursor()
@@ -125,6 +129,9 @@ def has_active_subscription(user_id: int) -> bool:
         expire_at = datetime.fromisoformat(expire_at)
 
     return expire_at >= datetime.utcnow()
+
+# (توابع دستوری در ادامه اضافه خواهد شد)
+# ✅ همه importهای اشتباه، logger تکراری، و client از http حذف شدند
 
 # ─── متن راهنمای خرید اشتراک ────────────────────────────────
 BUY_TEXT_FA = (
