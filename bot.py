@@ -500,7 +500,14 @@ BUY_TEXT_FA = (
     "<a href=\"BANK_CARD_NUMBER</a>\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
+# جایگزینی تابع
 
+async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        BUY_TEXT_FA,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
 
 MENU_KB = "کیبورد منو"
 
@@ -521,22 +528,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = "fa" if update.effective_user.language_code.startswith("fa") else "en"
     text = WELCOME_FA if lang == "fa" else WELCOME_EN
     await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
-
-
-# جایگزینی تابع
-
-async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        BUY_TEXT_FA,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
-
-MENU_KB = "کیبورد منو"
-
-def register_handlers(app):
-        app.add_handler(CommandHandler("buy", buy_cmd))
-        app.add_handler(CommandHandler("start", start_cmd))
 
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
@@ -664,3 +655,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
