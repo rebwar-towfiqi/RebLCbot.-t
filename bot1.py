@@ -33,6 +33,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from enum import Enum
 
 # ---------------------------------------------------------------------------#
 # 1️⃣ Environment & Global Configuration                                      #
