@@ -492,14 +492,7 @@ WELCOME_EN = (
     "Purchase a subscription to ask legal questions.\n"
     "Please choose an option from the menu:"
 )
-BUY_TEXT_FA = (
-    "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
-    "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
-    "<code>TON_WALLET_ADDRESS</code>\n\n"
-    "۲️⃣ یا پرداخت آنلاین ۵۰۰٬۰۰۰ تومان با کارت بانکی از طریق لینک زیر:\n"
-    "<a href=\"BANK_CARD_NUMBER</a>\n\n"
-    "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
-)
+
 # جایگزینی تابع
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -508,6 +501,17 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
+BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
+
+BUY_TEXT_FA = (
+    "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
+    "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
+    f"<code>{TON_WALLET_ADDR}</code>\n\n"
+    "۲️⃣ یا واریز ۵۰۰٬۰۰۰ تومان به شماره کارت زیر:\n"
+    f"<code>{BANK_CARD}</code>\n\n"
+    "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
+)
 
 MENU_KB = "کیبورد منو"
 
