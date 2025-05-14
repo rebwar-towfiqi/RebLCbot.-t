@@ -500,12 +500,20 @@ BUY_TEXT_FA = (
     "<a href=\"BANK_CARD_NUMBER</a>\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
+# جایگزینی تابع
+
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         BUY_TEXT_FA,
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+
+MENU_KB = "کیبورد منو"
+
+def register_handlers(app):
+        app.add_handler(CommandHandler("buy", buy_cmd))
+        app.add_handler(CommandHandler("start", start_cmd))
 
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
 MENU_KB = ReplyKeyboardMarkup(
