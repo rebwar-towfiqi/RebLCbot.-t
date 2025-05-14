@@ -500,6 +500,12 @@ BUY_TEXT_FA = (
     "<a href=\"BANK_CARD_NUMBER</a>\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
+async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        BUY_TEXT_FA,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
 
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
 MENU_KB = ReplyKeyboardMarkup(
@@ -518,12 +524,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
-async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-    BUY_TEXT_FA,
-    parse_mode=ParseMode.HTML,
-    disable_web_page_preview=True,
-)
+
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
