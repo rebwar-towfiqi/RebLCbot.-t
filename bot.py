@@ -459,8 +459,8 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    هندلر دکمه‌های اینلاین «تأیید/رد» در پیام مدیر.
-    پس از کلیک، وضعیت پایگاه‌داده را به‌روز کرده و به کاربر اطلاع می‌دهد.
+    هندلر دکمه‌های اینلاین «تأیید با نوع پرداخت» یا «رد» رسید کاربر.
+    فقط مدیر مجاز به استفاده است.
     """
     query = update.callback_query
     await query.answer()
@@ -469,27 +469,51 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         action, uid_str = query.data.split(":")
         target_uid = int(uid_str)
     except (ValueError, AttributeError):
-        return  # دادهٔ نامعتبر
+        return  # دادهٔ callback نامعتبر است
 
-    # محدودیت: فقط مدیر مجاز است
+    # فقط مدیر مجاز به انجام این عملیات است
     if update.effective_user.id != ADMIN_ID:
-        await query.answer("دسترسی شما محدود است.", show_alert=True)
+        await query.answer("⛔️ فقط مدیر مجاز به این عملیات است.", show_alert=True)
         return
 
-    if action == "approve":
-        save_subscription(target_uid, days=SUBS_DAYS)
+    if action.startswith("approve"):
+        if action == "approve_rlc":
+            days = 45
+            status_note = "✔️ تأیید شد (RLC)"
+        elif action == "approve_ton":
+            days = 30
+            status_note = "✔️ تأیید شد (TON)"
+        else:  # approve_card
+            days = 30
+            status_note = "✔️ تأیید شد (کارت بانکی)"
+
+        # ذخیره در پایگاه‌داده
+        set_user_expiration(target_uid, days)
+
+        # پیام به کاربر
         await context.bot.send_message(
             target_uid,
-            f"🎉 اشتراک شما تأیید شد و تا {SUBS_DAYS} روز فعال است. اکنون می‌توانید سؤال حقوقی بپرسید.",
+            f"🎉 اشتراک شما تأیید شد و تا <b>{days} روز</b> فعال است.",
+            parse_mode=ParseMode.HTML
         )
-        status_note = "✔️ تأیید شد"
-    else:  # reject
+
+    elif action == "reject":
         set_user_status(target_uid, "rejected")
         await context.bot.send_message(
             target_uid,
-            "❌ رسید شما رد شد. لطفاً دوباره با رسید صحیح اقدام کنید.",
+            "❌ رسید شما رد شد. لطفاً با رسید معتبر دوباره تلاش کنید."
         )
         status_note = "❌ رد شد"
+    else:
+        return  # callback غیرمنتظره
+
+    # ویرایش پیام مدیر برای ثبت نتیجه
+    new_text = (query.message.caption or query.message.text or "") + f"\n\n<b>وضعیت:</b> {status_note}"
+    if query.message.photo:
+        await query.message.edit_caption(new_text, parse_mode=ParseMode.HTML)
+    else:
+        await query.message.edit_text(new_text, parse_mode=ParseMode.HTML)
+
 
     # ویرایش پیام مدیر برای ثبت نتیجه
     new_text = (query.message.caption or query.message.text) + f"\n\nوضعیت: {status_note}"
@@ -519,44 +543,117 @@ WELCOME_EN = (
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        BUY_TEXT_FA,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
     )
-TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
-
-BUY_TEXT_FA = (
+    BUY_TEXT_FA = (
     "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
-    "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
-    f"<code>{TON_WALLET_ADDR}</code>\n\n"
-    "۲️⃣ یا واریز ۵۰۰٬۰۰۰ تومان به شماره کارت زیر:\n"
+    "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول:\n"
+    "<code>TON_WALLET_ADDR</code>\n\n"
+    "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره کارت:\n"
     f"<code>{BANK_CARD}</code>\n\n"
+    "۳️⃣ یا پرداخت با 1,800,000 <b>RLC</b> به آدرس:\n"
+    "<code>UQBkRlKAi6Rk4EuZqJ8QrxDgugKK1kLUS6Yp4lOE6MPiRkGW</code>\n"
+    "🔗 <a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>خرید مستقیم از Blum</a>\n\n"
+    "<b>🎁 مزایای پرداخت با RLC:</b>\n"
+    "• اشتراک ۴۵ روزه (به‌جای ۳۰ روز)\n"
+    "• دسترسی رایگان به قوانین بین‌المللی\n"
+    "• اولویت در پاسخ‌دهی به سؤالات حقوقی\n\n"
     "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
 )
 
+
 MENU_KB = "کیبورد منو"
 
-def register_handlers(app):
-        app.add_handler(CommandHandler("buy", buy_cmd))
-        app.add_handler(CommandHandler("start", start_cmd))
+def register_handlers(app: Application) -> None:
+    # فرمان‌های اصلی
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("buy", buy_cmd))
+    app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
+    app.add_handler(CommandHandler("ask", ask_cmd))
+    app.add_handler(CommandHandler("about_token", about_token))
+
+    # دکمه‌های تأیید/رد رسید با نوع پرداخت
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^approve_(rlc|ton|card):\d+$"), group=0)
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^reject:\d+$"), group=0)
+
+    # هندل رسید عکس یا متن – گروه 1
+    app.add_handler(
+        MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt),
+        group=1,
+    )
+
+    # پیام‌های متنی منو – گروه 2
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
+        group=2,
+    )
+
 
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
-MENU_KB = ReplyKeyboardMarkup(
+MENU_KB_FA = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
-        [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
+        [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("📚 جستجوی قانون")],
+        [KeyboardButton("ℹ️ درباره توکن")],
     ],
     resize_keyboard=True,
 )
 
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = "fa" if update.effective_user.language_code.startswith("fa") else "en"
-    text = WELCOME_FA if lang == "fa" else WELCOME_EN
-    await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
+MENU_KB_EN = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("🛒 Buy Subscription"), KeyboardButton("📤 Send Receipt")],
+        [KeyboardButton("⚖️ Legal Question"), KeyboardButton("📚 Search Law")],
+        [KeyboardButton("ℹ️ About Token")],
+    ],
+    resize_keyboard=True,
+)
 
+MENU_KB_KU = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("🛒 کڕینی بەشداریکردن"), KeyboardButton("📤 ناردنی وەرگرتن")],
+        [KeyboardButton("⚖️ پرسیارى یاسایی"), KeyboardButton("📚 گەڕان لە یاسا")],
+        [KeyboardButton("ℹ️ دەربارەی توکەن")],
+    ],
+    resize_keyboard=True,
+)
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
+
+
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang_code = update.effective_user.language_code.lower()
+    if lang_code.startswith("ku"):
+        lang = "ku"
+    elif lang_code.startswith("fa"):
+        lang = "fa"
+    else:
+        lang = "en"
+
+    if lang == "ku":
+        await update.message.reply_text(
+            "سڵاو! 👋\n"
+            "ئەمە <b>RebLawBot</b> ـە، یارمەتیدەری یاساییی تۆ.\n\n"
+            "بۆ دەستپێکردن یەکێک لە هەلبژاردەکانی خوارەوە دیاری بکە 👇",
+            reply_markup=MENU_KB_KU,
+            parse_mode=ParseMode.HTML
+        )
+    elif lang == "fa":
+        await update.message.reply_text(
+            "سلام! 👋\n"
+            "من <b>ربات حقوقی RebLawBot</b> هستم.\n\n"
+            "با تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\n"
+            "یکی از گزینه‌های زیر را انتخاب کنید 👇",
+            reply_markup=MENU_KB_FA,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            "Hi! 👋\n"
+            "I am <b>RebLawBot</b>, your legal assistant.\n\n"
+            "To get started, choose an option below 👇",
+            reply_markup=MENU_KB_EN,
+            parse_mode=ParseMode.HTML
+        )
 
 
 
@@ -592,22 +689,82 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await answer_question(update, context, question)
 
+async def law_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if len(context.args) < 2:
+        await update.message.reply_text("❗️مثال استفاده:\n<code>/law iran کار</code>", parse_mode=ParseMode.HTML)
+        return
+
+    country = context.args[0].capitalize()
+    keyword = " ".join(context.args[1:])
+    results = search_law(country, keyword)
+
+    if not results:
+        await update.message.reply_text("❌ موردی یافت نشد.")
+        return
+
+    for title, number, text in results:
+        await update.message.reply_text(
+            f"<b>{title}</b>\n📘 <b>{number}</b>\n{text}",
+            parse_mode=ParseMode.HTML
+        )
+
 # ─── روتر پیام‌های متنی منو ─────────────────────────────────────────────────
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = (update.message.text or "").strip()
-    if text.startswith("/"):
-        return  # فرمان‌ها جداگانه هندل می‌شوند
+    text = (update.message.text or "").strip().lower()
 
+    # فارسی
     if text == "🛒 خرید اشتراک":
         await buy_cmd(update, context)
     elif text == "📤 ارسال رسید":
         await send_receipt_cmd(update, context)
     elif text == "⚖️ سؤال حقوقی":
-        await update.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(
+            "برای پرسیدن سؤال حقوقی، از دستور زیر استفاده کنید:\n"
+            "<code>/ask قانون کار چیست؟</code>",
+            parse_mode=ParseMode.HTML
+        )
+    elif text == "📚 جستجوی قانون":
+        await update.message.reply_text(
+            "برای جستجوی مادهٔ قانونی:\n"
+            "<code>/law ایران کار</code>\n"
+            "یا\n"
+            "<code>/law france constitution</code>",
+            parse_mode=ParseMode.HTML
+        )
     elif text == "ℹ️ درباره توکن":
-        await about_token(update, context)  # فرض بر این که بعداً تعریف شده
+        await about_token(update, context)
+
+    # English
+    elif text == "🛒 buy subscription":
+        await buy_cmd(update, context)
+    elif text == "📤 send receipt":
+        await send_receipt_cmd(update, context)
+    elif text == "⚖️ legal question":
+        await update.message.reply_text(
+            "To ask a legal question, use:\n"
+            "<code>/ask What is labor law?</code>",
+            parse_mode=ParseMode.HTML
+        )
+    elif text == "📚 search law":
+        await update.message.reply_text(
+            "To search laws by keyword:\n"
+            "<code>/law france constitution</code>\n"
+            "<code>/law iran contract</code>",
+            parse_mode=ParseMode.HTML
+        )
+    elif text == "ℹ️ about token":
+        await about_token(update, context)
+
+    elif text == "⚖️ پرسیارى یاسایی":
+        await update.message.reply_text(
+        "تکایە پرسیارت بە دوای /ask بنووسە.\nوەکوو نموونە:\n<code>/ask یاسای کار چییە؟</code>",
+        parse_mode=ParseMode.HTML
+    )    
+
     else:
-        await update.message.reply_text("دستور نامعتبر است. از منو استفاده کنید.")
+        await update.message.reply_text("❓ دستور نامعتبر است. لطفاً از منو استفاده کنید.") 
+        
+
 # ---------------------------------------------------------------------------#
 # 6. Token info, handler wiring & main                                       #
 # ---------------------------------------------------------------------------#
@@ -660,25 +817,6 @@ def register_handlers(app: Application) -> None:
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
         group=2,
     )
-
-async def law_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if len(context.args) < 2:
-        await update.message.reply_text("❗️مثال استفاده:\n<code>/law iran کار</code>", parse_mode=ParseMode.HTML)
-        return
-
-    country = context.args[0].capitalize()
-    keyword = " ".join(context.args[1:])
-    results = search_law(country, keyword)
-
-    if not results:
-        await update.message.reply_text("❌ موردی یافت نشد.")
-        return
-
-    for title, number, text in results:
-        await update.message.reply_text(
-            f"<b>{title}</b>\n📘 <b>{number}</b>\n{text}",
-            parse_mode=ParseMode.HTML
-        )
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 def main() -> None:
