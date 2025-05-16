@@ -543,11 +543,17 @@ WELCOME_EN = (
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
+        BUY_TEXT_FA,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
     )
-    BUY_TEXT_FA = (
+
+
+
+BUY_TEXT_FA = (
     "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
     "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول:\n"
-    "<code>TON_WALLET_ADDR</code>\n\n"
+    f"<code>{TON_WALLET_ADDR}</code>\n\n"
     "۲️⃣ واریز ۵۰۰٬۰۰۰ تومان به شماره کارت:\n"
     f"<code>{BANK_CARD}</code>\n\n"
     "۳️⃣ یا پرداخت با 1,800,000 <b>RLC</b> به آدرس:\n"
@@ -561,7 +567,6 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 )
 
 
-MENU_KB = "کیبورد منو"
 
 def register_handlers(app: Application) -> None:
     # فرمان‌های اصلی
