@@ -539,6 +539,10 @@ WELCOME_EN = (
     "Please choose an option from the menu:"
 )
 
+TON_WALLET_ADDR = os.getenv("TON_WALLET_ADDRESS", "TON_NOT_SET")
+BANK_CARD = os.getenv("BANK_CARD_NUMBER", "CARD_NOT_SET")
+
+
 # جایگزینی تابع
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
