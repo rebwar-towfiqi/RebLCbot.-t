@@ -175,6 +175,28 @@ def get_db() -> Generator[sqlite3.Connection | "psycopg2.extensions.connection",
         with _sqlite_lock, sqlite3.connect(SQLITE_FILE) as conn:
             conn.row_factory = sqlite3.Row
             yield conn
+
+def search_law(country: str, keyword: str) -> List[Tuple[str, str, str]]:
+    """
+    جستجو در پایگاه داده بر اساس کشور و کلیدواژه.
+    برمی‌گرداند: (law_title, article_number, article_text)
+    """
+    conn = sqlite3.connect("laws.db")
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    query = """
+    SELECT law_title, article_number, article_text
+    FROM laws
+    WHERE country LIKE ? AND article_text LIKE ?
+    LIMIT 10;
+    """
+    cur.execute(query, (f"%{country}%", f"%{keyword}%"))
+    results = cur.fetchall()
+    conn.close()
+
+    return [(row["law_title"], row["article_number"], row["article_text"]) for row in results]
+
 # ---------------------------------------------------------------------------#
 # 2. Data helpers (users, receipts, questions)                               #
 # ---------------------------------------------------------------------------#
@@ -619,7 +641,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
-
+    app.add_handler(CommandHandler("law", law_cmd))
+ 
     # دکمه‌های تأیید/رد رسید (گروه 0 = اولویت بالا)
     app.add_handler(
         CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"),
@@ -637,6 +660,25 @@ def register_handlers(app: Application) -> None:
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
         group=2,
     )
+
+async def law_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if len(context.args) < 2:
+        await update.message.reply_text("❗️مثال استفاده:\n<code>/law iran کار</code>", parse_mode=ParseMode.HTML)
+        return
+
+    country = context.args[0].capitalize()
+    keyword = " ".join(context.args[1:])
+    results = search_law(country, keyword)
+
+    if not results:
+        await update.message.reply_text("❌ موردی یافت نشد.")
+        return
+
+    for title, number, text in results:
+        await update.message.reply_text(
+            f"<b>{title}</b>\n📘 <b>{number}</b>\n{text}",
+            parse_mode=ParseMode.HTML
+        )
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 def main() -> None:
