@@ -590,6 +590,14 @@ def register_handlers(app: Application) -> None:
 
 
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
+LANG_KB = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("🇮🇷 فارسی", callback_data="setlang:fa"),
+        InlineKeyboardButton("🇬🇧 English", callback_data="setlang:en"),
+        InlineKeyboardButton("🇮🇶 کوردی", callback_data="setlang:ku")
+    ]
+])
+
 MENU_KB_FA = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
@@ -619,43 +627,68 @@ MENU_KB_KU = ReplyKeyboardMarkup(
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
+async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "🌐 زبان مورد نظر خود را انتخاب کنید:",
+        reply_markup=LANG_KB
+    )
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang_code = update.effective_user.language_code.lower()
-    if lang_code.startswith("ku"):
+    """
+    پیام خوش‌آمد و منوی چندزبانه برای کاربر – فارسی، کردی، انگلیسی
+    """
+    # گرفتن کد زبان، پیش‌فرض خالی (برای جلوگیری از خطا)
+    lang_code = (update.effective_user.language_code or "").lower()
+
+    # تشخیص زبان از روی language_code
+    if "ku" in lang_code:
         lang = "ku"
-    elif lang_code.startswith("fa"):
+    elif "fa" in lang_code:
         lang = "fa"
     else:
         lang = "en"
 
+    # پیام خوش‌آمد و کیبورد بر اساس زبان
     if lang == "ku":
-        await update.message.reply_text(
+        text = (
             "سڵاو! 👋\n"
             "ئەمە <b>RebLawBot</b> ـە، یارمەتیدەری یاساییی تۆ.\n\n"
-            "بۆ دەستپێکردن یەکێک لە هەلبژاردەکانی خوارەوە دیاری بکە 👇",
-            reply_markup=MENU_KB_KU,
-            parse_mode=ParseMode.HTML
+            "بۆ دەستپێکردن، یەکێک لە هەلبژاردەکانی خوارەوە دیاری بکە 👇"
         )
+        kb = MENU_KB_KU
+
     elif lang == "fa":
-        await update.message.reply_text(
+        text = (
             "سلام! 👋\n"
             "من <b>ربات حقوقی RebLawBot</b> هستم.\n\n"
             "با تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\n"
-            "یکی از گزینه‌های زیر را انتخاب کنید 👇",
-            reply_markup=MENU_KB_FA,
-            parse_mode=ParseMode.HTML
+            "یکی از گزینه‌های زیر را انتخاب کنید 👇"
         )
+        kb = MENU_KB_FA
+
     else:
-        await update.message.reply_text(
+        text = (
             "Hi! 👋\n"
             "I am <b>RebLawBot</b>, your legal assistant.\n\n"
-            "To get started, choose an option below 👇",
-            reply_markup=MENU_KB_EN,
-            parse_mode=ParseMode.HTML
+            "To get started, choose an option below 👇"
         )
+        kb = MENU_KB_EN
 
+    await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
+async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    lang = query.data.split(":")[1]
+
+    # ذخیره زبان انتخاب‌شده در user_data
+    context.user_data["lang"] = lang
+
+    # پیام تأیید و اجرای start مجدد برای بازسازی منو
+    await query.edit_message_text("✅ زبان با موفقیت تنظیم شد.")
+    update.message = query.message  # برای سازگاری با start_cmd
+    await start_cmd(update, context)
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -799,6 +832,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("law", law_cmd))
+    app.add_handler(CommandHandler("lang", lang_cmd))
+    app.add_handler(CallbackQueryHandler(lang_callback, pattern=r"^setlang:(fa|en|ku)$"))
+
  
     # دکمه‌های تأیید/رد رسید (گروه 0 = اولویت بالا)
     app.add_handler(
