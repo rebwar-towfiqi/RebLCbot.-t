@@ -338,7 +338,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.answer("⛔️ فقط مدیر مجاز به انجام این عملیات است.", show_alert=True)
         return
     if action.startswith("approve_"):
-        method = action.split("30")[1]
+        method = action.split("_")[1]
         if method == "rlc":
             days = RLC_BONUS_DAYS
             method_text = "پرداخت با RLC"
