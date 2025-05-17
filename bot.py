@@ -862,30 +862,6 @@ def get_user_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
     """
     return context.user_data.get("lang", "fa")
 
-async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE, question: str) -> None:
-    """
-    ارسال سؤال به OpenAI و دریافت پاسخ.
-    """
-    await update.message.chat.send_action(ChatAction.TYPING)
-
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "شما یک وکیل با تجربه ایرانی هستید. پاسخ را رسمی و دقیق به زبان فارسی با ارجاع به قوانین بده."},
-                {"role": "user", "content": question}
-            ],
-            temperature=0.6,
-            max_tokens=1024,
-        )
-        answer = response.choices[0].message.content.strip()
-        await update.message.reply_text(answer)
-        save_question(update.effective_user.id, question, answer)
-
-    except (APIError, RateLimitError, AuthenticationError) as e:
-        logger.error("❌ خطا در OpenAI: %s", e)
-        await update.message.reply_text("⚠️ پاسخ‌دهی امکان‌پذیر نیست. لطفاً بعداً دوباره تلاش کنید.")
-
 async def law_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     جستجوی قوانین در پایگاه داده با استفاده از نام کشور و کلیدواژه.
@@ -978,12 +954,13 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("law", law_cmd))
     app.add_handler(CommandHandler("lang", lang_cmd))
+    app.add_handler(CommandHandler("help", help_cmd))
 
     # انتخاب زبان از طریق دکمه‌های اینلاین
     app.add_handler(CallbackQueryHandler(lang_callback, pattern=r"^setlang:(fa|en|ku)$"))
 
     # تأیید یا رد رسید توسط مدیر
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"), group=0)
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve_(rlc|ton|card)|reject):\d+$"), group=0)
 
     # هندل عکس یا متن به‌عنوان رسید
     app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=1)
