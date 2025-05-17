@@ -10,7 +10,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -81,7 +81,10 @@ def has_active_subscription(user_id: int) -> bool:
         if not row or not row["expire_at"]:
             return False
         try:
-            expire_at = datetime.fromisoformat(row["expire_at"])
+            expire_at_str = row["expire_at"]
+            if "T" not in expire_at_str:
+                expire_at_str = expire_at_str.replace(" ", "T")
+            expire_at = datetime.fromisoformat(expire_at_str)
             return expire_at > datetime.utcnow()
         except Exception:
             return False
