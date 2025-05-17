@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 RebLawBot – Telegram bot for legal consultation with RLC subscription
-Version 2025-05-17 – Cleaned and Fixed
+Version 2025-05-17 – Final
 """
 
 from __future__ import annotations
@@ -39,10 +39,8 @@ BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 SUBS_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
 RLC_BONUS_DAYS = int(os.getenv("RLC_BONUS_DAYS", "45"))
 OPENAI_API_KEY = getenv_or_die("OPENAI_API_KEY")
-
 openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
-# ---------- دیتابیس (SQLite) ----------
 DB_FILE = Path("users.db")
 DB_FILE.touch(exist_ok=True)
 
@@ -76,17 +74,6 @@ def init_db() -> None:
             asked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
-
-def upsert_user(user_id: int, username: Optional[str], first_name: Optional[str], last_name: Optional[str]) -> None:
-    with get_db() as conn:
-        conn.execute("""
-        INSERT INTO users (user_id, username, first_name, last_name)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            username = excluded.username,
-            first_name = excluded.first_name,
-            last_name = excluded.last_name
-        """, (user_id, username, first_name, last_name))
 
 def has_active_subscription(user_id: int) -> bool:
     with get_db() as conn:
@@ -128,35 +115,49 @@ def save_question(user_id: int, question: str, answer: str) -> None:
             (user_id, question, answer)
         )
 
-# ---------- منوها و پیام خوش‌آمد چندزبانه ----------
+def search_law(country: str, keyword: str, limit: int = 3) -> List[Tuple[str, str, str]]:
+    db_path = Path("laws.db")
+    if not db_path.exists():
+        return []
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT title, article_number, text
+        FROM laws
+        WHERE country = ?
+        AND (title LIKE ? OR text LIKE ?)
+        LIMIT ?
+    """, (country.lower(), f"%{keyword}%", f"%{keyword}%", limit))
+    results = [(row["title"], row["article_number"], row["text"]) for row in cur.fetchall()]
+    conn.close()
+    return results
 
+# ---------- منوها و پیام خوش‌آمد چندزبانه ----------
 MENU_KB_FA = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
         [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("📚 جستجوی قانون")],
-        [KeyboardButton("ℹ️ درباره توکن")],
+        [KeyboardButton("ℹ️ درباره توکن"), KeyboardButton("/help"), KeyboardButton("/lang")],
     ],
     resize_keyboard=True,
 )
-
 MENU_KB_EN = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 Buy Subscription"), KeyboardButton("📤 Send Receipt")],
         [KeyboardButton("⚖️ Legal Question"), KeyboardButton("📚 Search Law")],
-        [KeyboardButton("ℹ️ About Token")],
+        [KeyboardButton("ℹ️ About Token"), KeyboardButton("/help"), KeyboardButton("/lang")],
     ],
     resize_keyboard=True,
 )
-
 MENU_KB_KU = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 کڕینی بەشداریکردن"), KeyboardButton("📤 ناردنی وەرگرتن")],
         [KeyboardButton("⚖️ پرسیارى یاسایی"), KeyboardButton("📚 گەڕان لە یاسا")],
-        [KeyboardButton("ℹ️ دەربارەی توکەن")],
+        [KeyboardButton("ℹ️ دەربارەی توکەن"), KeyboardButton("/help"), KeyboardButton("/lang")],
     ],
     resize_keyboard=True,
 )
-
 WELCOME_TEXTS = {
     "fa": (
         "سلام! 👋\n"
@@ -175,7 +176,6 @@ WELCOME_TEXTS = {
         "بۆ دەستپێکردن، یەکێک لە هەلبژاردەکانی خوارەوە دیاری بکە 👇"
     ),
 }
-
 LANG_KB = InlineKeyboardMarkup([
     [
         InlineKeyboardButton("🇮🇷 فارسی", callback_data="setlang:fa"),
@@ -185,10 +185,8 @@ LANG_KB = InlineKeyboardMarkup([
 ])
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """خوش‌آمدگویی و نمایش منوی مناسب با توجه به زبان کاربر."""
     lang = context.user_data.get("lang")
     if not lang:
-        # تشخیص خودکار زبان بر اساس language_code کاربر
         lang_code = (update.effective_user.language_code or "").lower()
         if "ku" in lang_code:
             lang = "ku"
@@ -197,14 +195,12 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             lang = "en"
         context.user_data["lang"] = lang
-
     text = WELCOME_TEXTS.get(lang, WELCOME_TEXTS["en"])
     kb = {
         "fa": MENU_KB_FA,
         "en": MENU_KB_EN,
         "ku": MENU_KB_KU,
     }.get(lang, MENU_KB_EN)
-
     await update.message.reply_text(
         text,
         reply_markup=kb,
@@ -212,14 +208,12 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """نمایش دکمه‌های انتخاب زبان."""
     await update.message.reply_text(
         "🌐 لطفاً زبان مورد نظر را انتخاب کنید:",
         reply_markup=LANG_KB
     )
 
 async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """ذخیره زبان انتخاب‌شده و اجرای مجدد start."""
     query = update.callback_query
     await query.answer()
     try:
@@ -228,11 +222,10 @@ async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     context.user_data["lang"] = lang
     await query.edit_message_text("✅ زبان با موفقیت تنظیم شد.")
-    update.message = query.message  # سازگاری با start_cmd
+    update.message = query.message
     await start_cmd(update, context)
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """راهنمای استفاده از ربات"""
     await update.message.reply_text(
         "📌 راهنمای استفاده از RebLawBot:\n\n"
         "• برای پرسیدن سؤال حقوقی:\n"
@@ -244,59 +237,27 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "هر سوالی داشتید، در خدمت‌تان هستیم 🙏",
         parse_mode=ParseMode.HTML
     )
+
 async def law_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    جستجوی قوانین در پایگاه داده با استفاده از نام کشور و کلیدواژه.
-    مثال: /law iran کار
-    """
     if len(context.args) < 2:
         await update.message.reply_text(
             "❗️مثال استفاده:\n<code>/law iran کار</code>",
             parse_mode=ParseMode.HTML,
         )
         return
-
     country = context.args[0].lower()
     keyword = " ".join(context.args[1:])
     results = search_law(country, keyword)
-
     if not results:
         await update.message.reply_text("❌ موردی یافت نشد.")
         return
-
     for title, number, text in results:
         await update.message.reply_text(
             f"<b>{title}</b>\n📘 <b>{number}</b>\n{text}",
             parse_mode=ParseMode.HTML
         )
-def search_law(country: str, keyword: str, limit: int = 3) -> List[Tuple[str, str, str]]:
-    """
-    جستجوی ساده در پایگاه‌داده قوانین بر اساس کشور و کلمه‌کلیدی.
-    خروجی: فهرستی از (عنوان، شماره ماده، متن ماده)
-    """
-    db_path = Path("laws.db")
-    if not db_path.exists():
-        return []
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT title, article_number, text
-        FROM laws
-        WHERE country = ?
-        AND (title LIKE ? OR text LIKE ?)
-        LIMIT ?
-    """, (country.lower(), f"%{keyword}%", f"%{keyword}%", limit))
-
-    results = [(row["title"], row["article_number"], row["text"]) for row in cur.fetchall()]
-    conn.close()
-    return results
-
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """راهنمای خرید اشتراک با تمام روش‌ها و مزایای RLC"""
     BUY_TEXT_FA = (
         "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
         "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول:\n"
@@ -319,28 +280,20 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """فعال‌کردن حالت انتظار دریافت رسید از کاربر."""
     context.user_data["awaiting_receipt"] = True
     await update.message.reply_text("لطفاً تصویر یا متن رسید پرداخت را ارسال کنید.")
 
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    رسید دریافتی (عکس یا متن) را به مدیر ارسال می‌کند با دکمه‌های تأیید یا رد.
-    """
     if not context.user_data.get("awaiting_receipt") and not update.message.photo:
         return
-
     context.user_data["awaiting_receipt"] = False
     msg: Message = update.message
     user = update.effective_user
-
-    # ذخیرهٔ عکس رسید در دیتابیس
     if msg.photo:
         photo_id = msg.photo[-1].file_id
         save_receipt_request(user.id, photo_id)
     else:
         photo_id = None
-
     buttons = [
         [
             InlineKeyboardButton("✅ تأیید پرداخت RLC", callback_data=f"approve_rlc:{user.id}"),
@@ -350,13 +303,11 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         [InlineKeyboardButton("❌ رد", callback_data=f"reject:{user.id}")]
     ]
     kb = InlineKeyboardMarkup(buttons)
-
     caption = (
         f"📥 رسید جدید از <a href='tg://user?id={user.id}'>{user.full_name}</a>\n"
         f"نام کاربری: @{user.username or '—'}\n\n"
         f"برای تأیید یا رد یکی از گزینه‌ها را انتخاب کنید 👇"
     )
-
     if photo_id:
         await context.bot.send_photo(
             ADMIN_ID,
@@ -373,28 +324,19 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=kb,
             parse_mode=ParseMode.HTML
         )
-
     await msg.reply_text("✅ رسید شما برای بررسی مدیر ارسال شد. لطفاً منتظر بمانید.")
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    مدیریت دکمه‌های تأیید یا رد رسید توسط مدیر.
-    تأیید = فعال‌سازی اشتراک کاربر
-    """
     query = update.callback_query
     await query.answer()
-
     try:
         action, uid_str = query.data.split(":")
         user_id = int(uid_str)
     except (ValueError, AttributeError):
         return
-
     if update.effective_user.id != ADMIN_ID:
         await query.answer("⛔️ فقط مدیر مجاز به انجام این عملیات است.", show_alert=True)
         return
-
-    # تعیین نوع پرداخت و مدت اشتراک
     if action.startswith("approve_"):
         method = action.split("_")[1]
         if method == "rlc":
@@ -408,8 +350,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             method_text = "پرداخت کارت بانکی"
         else:
             return
-
-        # فعال‌سازی اشتراک
         save_subscription(user_id, days)
         expire_date = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d")
         await context.bot.send_message(
@@ -418,7 +358,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             parse_mode=ParseMode.HTML
         )
         status_note = f"✔️ تأیید شد ({method_text})"
-
     elif action == "reject":
         set_user_status(user_id, "rejected")
         await context.bot.send_message(
@@ -426,11 +365,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "❌ رسید شما رد شد. لطفاً دوباره با رسید معتبر اقدام کنید."
         )
         status_note = "❌ رد شد"
-
     else:
         return
-
-    # ویرایش پیام مدیر با وضعیت جدید
     new_text = (query.message.caption or query.message.text or "") + f"\n\n<b>{status_note}</b>"
     if query.message.photo:
         await query.message.edit_caption(new_text, parse_mode=ParseMode.HTML)
@@ -438,21 +374,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.message.edit_text(new_text, parse_mode=ParseMode.HTML)
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """نمایش وضعیت اشتراک کاربر"""
     uid = update.effective_user.id
     with get_db() as conn:
         row = conn.execute("SELECT expire_at FROM users WHERE user_id = ?", (uid,)).fetchone()
-
     if not row or not row["expire_at"]:
         await update.message.reply_text("❌ شما اشتراک فعالی ندارید.")
         return
-
     try:
         expire_at = datetime.fromisoformat(row["expire_at"])
     except Exception:
         await update.message.reply_text("❌ خطا در تاریخ اشتراک.")
         return
-
     if expire_at < datetime.utcnow():
         await update.message.reply_text("⚠️ اشتراک شما منقضی شده است.")
     else:
@@ -460,20 +392,17 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"✅ اشتراک شما تا <b>{expire_at:%Y-%m-%d}</b> فعال است.",
             parse_mode=ParseMode.HTML
         )
+
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """دریافت سؤال حقوقی از کاربر، بررسی اشتراک و پاسخ‌دهی با OpenAI."""
     uid = update.effective_user.id
     if not has_active_subscription(uid):
         await update.message.reply_text("❌ برای پرسیدن سؤال، ابتدا باید اشتراک تهیه کنید.")
         return
-
     question = " ".join(context.args)
     if not question:
         await update.message.reply_text("❓ لطفاً سؤال خود را بعد از /ask بنویسید.")
         return
-
     await update.message.chat.send_action(ChatAction.TYPING)
-
     try:
         response = await openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -487,99 +416,12 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         answer = response.choices[0].message.content.strip()
         await update.message.reply_text(answer)
         save_question(uid, question, answer)
-
     except Exception as e:
         logger.error("خطا در پاسخ OpenAI: %s", e)
         await update.message.reply_text("⚠️ خطایی در پاسخ‌دهی رخ داد. لطفاً بعداً تلاش کنید.")
 
-async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    مسیریابی پیام‌های متنی غیر‌دستور برای منوهای فارسی، انگلیسی، کردی.
-    """
-    text = (update.message.text or "").strip().lower()
-
-    # فارسی
-    if text == "🛒 خرید اشتراک":
-        await buy_cmd(update, context)
-    elif text == "📤 ارسال رسید":
-        await send_receipt_cmd(update, context)
-    elif text == "⚖️ سؤال حقوقی":
-        await update.message.reply_text(
-            "برای پرسیدن سؤال حقوقی، از دستور زیر استفاده کنید:\n"
-            "<code>/ask قانون کار چیست؟</code>",
-            parse_mode=ParseMode.HTML
-        )
-    elif text == "📚 جستجوی قانون":
-        await update.message.reply_text(
-            "برای جستجوی مادهٔ قانونی:\n"
-            "<code>/law ایران کار</code>\n"
-            "یا\n"
-            "<code>/law france constitution</code>",
-            parse_mode=ParseMode.HTML
-        )
-    elif text == "ℹ️ درباره توکن":
-        await about_token(update, context)
-
-    # English
-    elif text == "🛒 buy subscription":
-        await buy_cmd(update, context)
-    elif text == "📤 send receipt":
-        await send_receipt_cmd(update, context)
-    elif text == "⚖️ legal question":
-        await update.message.reply_text(
-            "To ask a legal question, use:\n"
-            "<code>/ask What is labor law?</code>",
-            parse_mode=ParseMode.HTML
-        )
-    elif text == "📚 search law":
-        await update.message.reply_text(
-            "To search laws by keyword:\n"
-            "<code>/law france constitution</code>\n"
-            "<code>/law iran contract</code>",
-            parse_mode=ParseMode.HTML
-        )
-    elif text == "ℹ️ about token":
-        await about_token(update, context)
-
-    # کردی
-    elif text == "⚖️ پرسیارى یاسایی":
-        await update.message.reply_text(
-            "تکایە پرسیارت بە دوای /ask بنووسە.\nوەکوو نموونە:\n<code>/ask یاسای کار چییە؟</code>",
-            parse_mode=ParseMode.HTML
-        )
-
-    else:
-        await update.message.reply_text("❓ دستور نامعتبر است. لطفاً از منو استفاده کنید.")
-
-
-def register_handlers(app: Application) -> None:
-    """ثبت تمام فرمان‌ها و هندلرهای ربات."""
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("buy", buy_cmd))
-    app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
-    app.add_handler(CommandHandler("status", status_cmd))
-    app.add_handler(CommandHandler("ask", ask_cmd))
-    app.add_handler(CommandHandler("about_token", about_token))
-    app.add_handler(CommandHandler("law", law_cmd))
-    app.add_handler(CommandHandler("lang", lang_cmd))
-    
-    # انتخاب زبان از طریق دکمه‌های اینلاین
-    app.add_handler(CallbackQueryHandler(lang_callback, pattern=r"^setlang:(fa|en|ku)$"))
-    # تأیید یا رد رسید توسط مدیر
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject)_(rlc|ton|card):\d+$"))
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^reject:\d+$"))
-    
-    # هندل عکس یا متن به‌عنوان رسید (بعد از فعال‌شدن انتظار دریافت رسید)
-    app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=1)
-    
-    # پیام‌های متنی منوی اصلی
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=2)
-
 TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")
-
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """ارسال اطلاعات درباره توکن RebLawCoin (RLC) به همراه لینک خرید و تصویر."""
     msg = update.effective_message
     if TOKEN_IMG.exists():
         await msg.reply_photo(TOKEN_IMG.open("rb"))
@@ -597,26 +439,8 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         disable_web_page_preview=True,
     )
 
-def main() -> None:
-    """اجرای اصلی ربات با بارگذاری توکن، دیتابیس و راه‌اندازی اپلیکیشن."""
-    # مقداردهی اولیه پایگاه‌داده
-    init_db()
-    # ساخت اپلیکیشن با توکن
-    application = Application.builder().token(BOT_TOKEN).build()
-    # ثبت هندلرها
-    register_handlers(application)
-    # اجرای ربات به‌صورت polling
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
-    main()
-
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    مسیریابی پیام‌های متنی غیر‌دستور برای منوهای فارسی، انگلیسی، کردی.
-    """
     text = (update.message.text or "").strip().lower()
-
     # فارسی
     if text == "🛒 خرید اشتراک":
         await buy_cmd(update, context)
@@ -638,7 +462,10 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
     elif text == "ℹ️ درباره توکن":
         await about_token(update, context)
-
+    elif text == "/help":
+        await help_cmd(update, context)
+    elif text == "/lang":
+        await lang_cmd(update, context)
     # English
     elif text == "🛒 buy subscription":
         await buy_cmd(update, context)
@@ -659,13 +486,40 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
     elif text == "ℹ️ about token":
         await about_token(update, context)
-
+    elif text == "/help":
+        await help_cmd(update, context)
+    elif text == "/lang":
+        await lang_cmd(update, context)
     # کردی
     elif text == "⚖️ پرسیارى یاسایی":
         await update.message.reply_text(
             "تکایە پرسیارت بە دوای /ask بنووسە.\nوەکوو نموونە:\n<code>/ask یاسای کار چییە؟</code>",
             parse_mode=ParseMode.HTML
         )
-
     else:
         await update.message.reply_text("❓ دستور نامعتبر است. لطفاً از منو استفاده کنید.")
+
+def register_handlers(app: Application) -> None:
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("buy", buy_cmd))
+    app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
+    app.add_handler(CommandHandler("ask", ask_cmd))
+    app.add_handler(CommandHandler("about_token", about_token))
+    app.add_handler(CommandHandler("law", law_cmd))
+    app.add_handler(CommandHandler("lang", lang_cmd))
+    app.add_handler(CallbackQueryHandler(lang_callback, pattern=r"^setlang:(fa|en|ku)$"))
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject)_(rlc|ton|card):\d+$"))
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^reject:\d+$"))
+    app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=1)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=2)
+
+def main() -> None:
+    init_db()
+    application = Application.builder().token(BOT_TOKEN).build()
+    register_handlers(application)
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    main()
