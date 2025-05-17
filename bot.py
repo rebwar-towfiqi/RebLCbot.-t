@@ -514,6 +514,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("lang", lang_cmd))
     app.add_handler(CallbackQueryHandler(lang_callback, pattern=r"^setlang:(fa|en|ku)$"))
     app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject)_(rlc|ton|card):\d+$"))
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve_(rlc|ton|card)|reject):\d+$"))
     app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=1)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=2)
 
