@@ -582,8 +582,15 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("about_token", about_token))
 
     # دکمه‌های تأیید/رد رسید با نوع پرداخت
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^approve_(rlc|ton|card):\d+$"), group=0)
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^reject:\d+$"), group=0)
+    app.add_handler(
+    CallbackQueryHandler(callback_handler, pattern=r"^approve_(rlc|ton|card):\d+$"),
+    group=0,
+)  
+    app.add_handler(
+    CallbackQueryHandler(callback_handler, pattern=r"^reject:\d+$"),
+    group=0,
+)
+
 
     # هندل رسید عکس یا متن – گروه 1
     app.add_handler(
@@ -831,6 +838,39 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         disable_web_page_preview=True,
     )
 
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang_code = (update.effective_user.language_code or "").lower()
+
+    if "ku" in lang_code:
+        text = (
+            "📘 <b>یارمەتیدانی بۆ بەکارهێنانی RebLawBot</b>\n\n"
+            "• کڕینی بەشداریکردن: /buy\n"
+            "• ناردنی وەرگرتن: /send_receipt\n"
+            "• پرسیاری یاسایی: /ask <پرسیار>\n"
+            "• گەڕان لە یاسا: /law iran کار\n"
+            "• گۆڕینی زمان: /lang"
+        )
+    elif "fa" in lang_code:
+        text = (
+            "📘 <b>راهنمای استفاده از RebLawBot</b>\n\n"
+            "• خرید اشتراک: /buy\n"
+            "• ارسال رسید: /send_receipt\n"
+            "• پرسش حقوقی: /ask <سؤال>\n"
+            "• جستجوی قانون: /law iran کار\n"
+            "• تغییر زبان: /lang"
+        )
+    else:
+        text = (
+            "📘 <b>How to use RebLawBot</b>\n\n"
+            "• Buy a subscription: /buy\n"
+            "• Send receipt: /send_receipt\n"
+            "• Ask a legal question: /ask <your question>\n"
+            "• Search laws: /law france constitution\n"
+            "• Change language: /lang"
+        )
+
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
 # ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
     # دستورات اصلی
@@ -856,6 +896,8 @@ def register_handlers(app: Application) -> None:
         MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt),
         group=1,
     )
+    app.add_handler(CommandHandler("help", help_cmd))
+
 
     # سایر پیام‌های متنی منو – گروه 2
     app.add_handler(
