@@ -524,7 +524,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ton=TON_WALLET_ADDR,
             bank=BANK_CARD,
             rlc="1,800,000",
-            rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "🧾 آدرس تنظیم نشده"),
+            rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "آدرس تنظیم نشده"),
         ),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
