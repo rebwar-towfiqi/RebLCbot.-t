@@ -687,12 +687,12 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")  # تصویر لوگوی RLC
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اطلاعات توکن RLC + لینک خرید."""
+    """اطلاعات توکن RLC + لینک خرید (چندزبانه)."""
     msg = update.effective_message
-    if TOKEN_IMG.exists():
-        await msg.reply_photo(TOKEN_IMG.open("rb"))
-    await msg.reply_text(
-        (
+    lang = get_lang(context)
+
+    token_info = {
+        "fa": (
             "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n\n"
             "<b>اهداف پروژه:</b>\n"
             "• سرمایه‌گذاری در نوآوری‌های حقوقی\n"
@@ -701,9 +701,35 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "برای خرید سریع روی لینک زیر بزنید:\n"
             "<a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>خرید از Blum</a>"
         ),
+        "en": (
+            "🎉 <b>RebLawCoin (RLC)</b> – The first cryptocurrency focused on legal services.\n\n"
+            "<b>Project Objectives:</b>\n"
+            "• Investing in legal innovations\n"
+            "• Institutionalizing justice on blockchain\n"
+            "• Sustainable profitability for investors\n\n"
+            "Click the link below for quick purchase:\n"
+            "<a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>Buy from Blum</a>"
+        ),
+        "ku": (
+            "🎉 <b>تۆکێنی RebLawCoin (RLC)</b> – یەکەم دراوە دیجیتاڵیی تایبەت بە خزمەتگوزارییە یاساییەکان.\n\n"
+            "<b>ئامانجەکانی پڕۆژەکە:</b>\n"
+            "• وەبەرهێنان لە داهێنانی یاسایی\n"
+            "• دامەزراندنی دادپەروەری بە شێوەی بلۆکچەین\n"
+            "• قازانجی بەردەوام بۆ وەبەرهێنەران\n\n"
+            "بۆ کڕینی خێرا لەسەر ئەم لینکە کلیک بکە:\n"
+            "<a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>کڕین لە Blum</a>"
+        ),
+    }
+
+    if TOKEN_IMG.exists():
+        await msg.reply_photo(TOKEN_IMG.open("rb"))
+
+    await msg.reply_text(
+        token_info.get(lang, token_info["fa"]),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+
 
 # ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
