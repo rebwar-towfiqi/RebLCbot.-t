@@ -71,9 +71,13 @@ def getenv_or_die(key: str) -> str:
         raise RuntimeError(f"Environment variable {key!r} is missing")
     return value
 
-def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
-    """برگرداندن زبان کاربر از session یا مقدار پیش‌فرض"""
-    return context.user_data.get("lang", "fa")
+def get_lang(context):
+    lang = context.user_data.get("lang")
+    if lang not in ("fa", "en", "ku"):
+        lang = "fa"
+        context.user_data["lang"] = lang
+    return lang
+
 
 # ---------------------------------------------------------------------------#
 # 1. Database layer – PostgreSQL → SQLite fallback                           #
@@ -536,11 +540,20 @@ def register_handlers(app):
         app.add_handler(CommandHandler("buy", buy_cmd))
         app.add_handler(CommandHandler("start", start_cmd))
 
+        # --- انتخاب زبان (Language Keyboard) ---
+LANG_KB = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("🇮🇷 فارسی"), KeyboardButton("🇬🇧 English"), KeyboardButton("🇮🇶 کوردی")],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True,
+)
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
 MENU_KB = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
         [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
+        [KeyboardButton("/lang")],  # این خط را اضافه کنید
     ],
     resize_keyboard=True,
 )
@@ -548,6 +561,29 @@ MENU_KB = ReplyKeyboardMarkup(
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
+
+async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش کیبورد انتخاب زبان هنگام اجرای /lang"""
+    await update.message.reply_text(
+        "لطفاً زبان مورد نظر را انتخاب کنید:\nPlease select your preferred language:\nتکایە زمانت هەلبژێرە:",
+        reply_markup=LANG_KB,
+    )
+
+async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
+    text = (update.message.text or "").strip()
+    if text == "🇮🇷 فارسی":
+        context.user_data["lang"] = "fa"
+        await update.message.reply_text("✅ زبان به فارسی تغییر کرد.", reply_markup=MENU_KB)
+    elif text == "🇬🇧 English":
+        context.user_data["lang"] = "en"
+        await update.message.reply_text("✅ Language changed to English.", reply_markup=MENU_KB)
+    elif text == "🇮🇶 کوردی":
+        context.user_data["lang"] = "ku"
+        await update.message.reply_text("✅ زمان بۆ کوردی گۆڕدرا.", reply_markup=MENU_KB)
+    else:
+        # اگر متن انتخاب زبان نبود، پیام به روتر اصلی برود
+        await text_router(update, context)
 
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
@@ -661,6 +697,9 @@ def register_handlers(app: Application) -> None:
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
         group=2,
     )
+    app.add_handler(CommandHandler("lang", lang_cmd))
+    # هندلر انتخاب زبان را با گروه بالا ثبت کنید (مثلاً group=5 که آخر باشد)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lang_text_router), group=5)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 def main() -> None:
