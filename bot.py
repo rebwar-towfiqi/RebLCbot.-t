@@ -38,6 +38,27 @@ from telegram.ext import (
     filters,
 )
 
+from telegram import ReplyKeyboardMarkup, KeyboardButton
+
+# کیبورد انتخاب زبان
+LANG_KB = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("فارسی"), KeyboardButton("English"), KeyboardButton("کوردی")],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True,
+)
+
+# کیبورد منوی اصلی
+MENU_KB = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
+        [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
+        [KeyboardButton("/lang")],
+    ],
+    resize_keyboard=True,
+)
+
 # ─── محیط و تنظیمات جهانی ─────────────────────────────────────────────────────
 load_dotenv()  # متغیرهای محیطی را از .env می‌خواند
 
@@ -525,8 +546,8 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         tr(
             "buy",
             lang,
-            ton=TON_WALLET_ADDR,
-            bank=BANK_CARD,
+            ton="1",
+            bank="300000 تومان",                  
             rlc="1,800,000",
             rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "آدرس تنظیم نشده"),
         ),
@@ -572,20 +593,26 @@ async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
-    text = (update.message.text or "").strip()
-    if text == "🇮🇷 فارسی":
+    text = (update.message.text or "").strip().lower()
+    if text == "فارسی":
         context.user_data["lang"] = "fa"
         await update.message.reply_text("✅ زبان به فارسی تغییر کرد.", reply_markup=MENU_KB)
-    elif text == "🇬🇧 English":
+    elif text == "english":
         context.user_data["lang"] = "en"
         await update.message.reply_text("✅ Language changed to English.", reply_markup=MENU_KB)
-    elif text == "🇮🇶 کوردی":
+    elif text == "کوردی":
         context.user_data["lang"] = "ku"
         await update.message.reply_text("✅ زمان بۆ کوردی گۆڕدرا.", reply_markup=MENU_KB)
     else:
-        # اگر متن انتخاب زبان نبود، پیام به روتر اصلی برود
+        # اگر متن انتخاب زبان نبود، پیام را به روتر اصلی بفرست
         await text_router(update, context)
 
+def get_lang(context):
+    lang = context.user_data.get("lang")
+    if lang not in ("fa", "en", "ku"):
+        lang = "fa"
+        context.user_data["lang"] = lang
+    return lang
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -644,9 +671,10 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif text == "⚖️ سؤال حقوقی":
         await update.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML)
     elif text == "ℹ️ درباره توکن":
-        await about_token(update, context)  # فرض بر این که بعداً تعریف شده
+        await about_token(update, context)
     else:
         await update.message.reply_text("دستور نامعتبر است. از منو استفاده کنید.")
+
 # ---------------------------------------------------------------------------#
 # 6. Token info, handler wiring & main                                       #
 # ---------------------------------------------------------------------------#
@@ -680,46 +708,45 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
+    app.add_handler(CommandHandler("lang", lang_cmd))
 
-    # دکمه‌های تأیید/رد رسید (گروه 0 = اولویت بالا)
+    # دکمه‌های تأیید/رد رسید
     app.add_handler(
         CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"),
         group=0,
     )
 
-    # رسید (عکس یا متن) – گروه 1
+    # رسید (عکس یا متن)
     app.add_handler(
         MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt),
         group=1,
     )
 
-    # سایر پیام‌های متنی منو – گروه 2
+    # هندلر انتخاب زبان - پیش از روتر عمومی
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
+        MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router),
         group=2,
     )
-    app.add_handler(CommandHandler("lang", lang_cmd))
-    # هندلر انتخاب زبان را با گروه بالا ثبت کنید (مثلاً group=5 که آخر باشد)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lang_text_router), group=5)
+
+    # سایر پیام‌های متنی منو
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
+        group=3,
+    )
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 def main() -> None:
-    # ۱) متغیرهای حیاتی
+    # متغیرهای حیاتی
     bot_token = getenv_or_die("BOT_TOKEN")
 
-    # ۲) پایگاه‌داده
+    # پایگاه‌داده
     init_db()
 
-    # ۳) ساخت اپلیکیشن
+    # ساخت اپلیکیشن
     application = Application.builder().token(bot_token).build()
 
-    # ۴) ثبت هندلرها
+    # ثبت هندلرها
     register_handlers(application)
 
-    # ۵) اجرا: polling یا webhook بر اساس USE_WEBHOOK
-
+    # اجرا: polling یا webhook بر اساس USE_WEBHOOK
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-if __name__ == "__main__":
-    main()
