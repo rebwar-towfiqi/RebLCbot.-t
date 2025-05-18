@@ -519,21 +519,6 @@ WELCOME_EN = (
 
 # جایگزینی تابع
 
-async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = get_lang(context)
-    await update.message.reply_text(
-        tr(
-            "buy",
-            lang,
-            ton=TON_WALLET_ADDR,
-            bank=BANK_CARD,
-            rlc="1,800,000",
-            rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "آدرس تنظیم نشده"),
-        ),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
-
 MENU_KB = "کیبورد منو"
 
 def register_handlers(app):
@@ -573,18 +558,67 @@ async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
     text = (update.message.text or "").strip()
-    if text == "🇮🇷 فارسی":
-        context.user_data["lang"] = "fa"
-        await update.message.reply_text("✅ زبان به فارسی تغییر کرد.", reply_markup=MENU_KB)
-    elif text == "🇬🇧 English":
-        context.user_data["lang"] = "en"
-        await update.message.reply_text("✅ Language changed to English.", reply_markup=MENU_KB)
-    elif text == "🇮🇶 کوردی":
-        context.user_data["lang"] = "ku"
-        await update.message.reply_text("✅ زمان بۆ کوردی گۆڕدرا.", reply_markup=MENU_KB)
+    lang_options = {
+        "فارسی": "fa",
+        "English": "en",
+        "کوردی": "ku"
+    }
+
+    if text in lang_options:
+        context.user_data["lang"] = lang_options[text]
+        await update.message.reply_text({
+            "fa": "✅ زبان به فارسی تغییر کرد.",
+            "en": "✅ Language changed to English.",
+            "ku": "✅ زمان بۆ کوردی گۆڕدرا."
+        }[lang_options[text]], reply_markup=MENU_KB)
     else:
-        # اگر متن انتخاب زبان نبود، پیام به روتر اصلی برود
         await text_router(update, context)
+
+
+async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = get_lang(context)
+    ton_wallet = getenv_or_die("TON_WALLET_ADDRESS")
+    bank_card = getenv_or_die("BANK_CARD_NUMBER")
+    rlc_wallet = os.getenv("RLC_WALLET_ADDRESS", "آدرس تنظیم نشده")
+
+    price_text = {
+        "fa": (
+            f"🔸 قیمت اشتراک یک‌ماهه:\n\n"
+            f"💳 کارت بانکی: 300،000 تومان\n"
+            f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
+            f"💎 تون کوین (TON): 1 \n"
+            f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
+            f"🚀 توکن RLC: 1,800,000\n"
+            f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
+        ),
+        "en": (
+            f"🔸 One-month subscription price:\n\n"
+            f"💳 Bank Card: 300،000 IRR\n"
+            f"🏦 Card Number: <code>{bank_card}</code>\n\n"
+            f"💎 TON Coin (TON): 1 \n"
+            f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
+            f"🚀 RLC Token: 1,800,000\n"
+            f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
+        ),
+        "ku": (
+            f"🔸 نرخی بەشداریکردنی مانگانە:\n\n"
+            f"💳 کارتی بانک: 300،000 تومان\n"
+            f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
+            f"💎 تۆن کۆین (TON): 1 \n"
+            f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
+            f"🚀 تۆکێنی RLC: ١٬٨٠٠٬٠٠٠\n"
+            f"🔗 ناونیشانی والت RLC: <code>{rlc_wallet}</code>\n"
+        ),
+    }
+
+    await update.message.reply_text(
+        price_text.get(lang, price_text["fa"]),
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+
 
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
@@ -673,34 +707,21 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
-    # دستورات اصلی
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("buy", buy_cmd))
     app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
-
-    # دکمه‌های تأیید/رد رسید (گروه 0 = اولویت بالا)
-    app.add_handler(
-        CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"),
-        group=0,
-    )
-
-    # رسید (عکس یا متن) – گروه 1
-    app.add_handler(
-        MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt),
-        group=1,
-    )
-
-    # سایر پیام‌های متنی منو – گروه 2
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
-        group=2,
-    )
     app.add_handler(CommandHandler("lang", lang_cmd))
-    # هندلر انتخاب زبان را با گروه بالا ثبت کنید (مثلاً group=5 که آخر باشد)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lang_text_router), group=5)
+
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"), group=0)
+
+    # ابتدا متن زبان را بررسی و سپس متن رسید را بررسی کنید
+    app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=1)
+    app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=2)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=3)
+
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 def main() -> None:
