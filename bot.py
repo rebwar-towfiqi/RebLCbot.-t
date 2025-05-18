@@ -52,6 +52,27 @@ client = AsyncOpenAI()
 # ---------------------------------------------------------------------------#
 # 0. Utilities                                                               #
 # ---------------------------------------------------------------------------#
+def get_main_menu(lang: str):
+    menus = {
+        "fa": [
+            [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
+            [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
+            [KeyboardButton("/lang")]
+        ],
+        "en": [
+            [KeyboardButton("🛒 Buy Subscription"), KeyboardButton("📤 Send Receipt")],
+            [KeyboardButton("⚖️ Legal Question"), KeyboardButton("ℹ️ About Token")],
+            [KeyboardButton("/lang")]
+        ],
+        "ku": [
+            [KeyboardButton("🛒 کڕینی بەشداریکردن"), KeyboardButton("📤 ناردنی پسوڵە")],
+            [KeyboardButton("⚖️ پرسیاری یاسایی"), KeyboardButton("ℹ️ دەربارەی تۆکێن")],
+            [KeyboardButton("/lang")]
+        ]
+    }
+    return ReplyKeyboardMarkup(menus.get(lang, menus["fa"]), resize_keyboard=True)
+
+
 def tr(key: str, lang: str = "fa", **kwargs) -> str:
     """دریافت متن ترجمه‌شده بر اساس کلید و زبان کاربر"""
     base = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
@@ -293,6 +314,24 @@ def has_active_subscription(user_id: int) -> bool:
     if isinstance(expire_at, str):
         expire_at = datetime.fromisoformat(expire_at)
     return expire_at >= datetime.utcnow()
+# ─── تقسیم پیام بلند به قطعات کوچکتر ─────────────────────────────────────────
+def _split_message(text: str, limit: int = 4096) -> List[str]:
+    """
+    متن بیش‌ازحد بلند را روی \n\n یا \n یا فاصله می‌شکند تا تلگرام خطا ندهد.
+    """
+    if len(text) <= limit:
+        return [text]
+
+    parts: List[str] = []
+    while len(text) > limit:
+        breakpoints = [text.rfind(sep, 0, limit) for sep in ("\n\n", "\n", " ")]
+        idx = max(breakpoints)
+        idx = idx if idx != -1 else limit
+        parts.append(text[:idx].rstrip())
+        text = text[idx:].lstrip()
+    if text:
+        parts.append(text)
+    return parts
 
 # ─────────────────────────────────────────────────────────────────────────────
 def save_question(user_id: int, question: str, answer: str) -> None:
@@ -306,15 +345,18 @@ def save_question(user_id: int, question: str, answer: str) -> None:
 # 3. OpenAI interface & long-message helper                                  #
 # ---------------------------------------------------------------------------#
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = (update.effective_user.language_code or "fa").split("-")[0]
-    if lang not in ("fa", "en", "ku"):
-        lang = "fa"
-
-    context.user_data["lang"] = lang  # ذخیره زبان انتخابی کاربر
-
-    await update.message.reply_text(tr("welcome", lang), reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
-
-
+    lang = get_lang(context)
+    welcome_text = {
+        "fa": "سلام! 👋\nمن <b>ربات حقوقی RebLawBot</b> هستم.\nبا تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\nبرای شروع یکی از گزینه‌های زیر را انتخاب کنید:",
+        "en": "Hello! 👋\nI am <b>RebLawBot</b>, your legal assistant.\nPurchase a subscription to ask legal questions.\nPlease choose an option from the menu:",
+        "ku": "سڵاو! 👋\nمن <b>ڕۆبۆتی یاسایی RebLawBot</b>م.\nبە بەشداربوون دەتوانیت پرسیاری یاساییت بکەیت.\nتکایە هەڵبژاردنێک بکە لە خوارەوە:"
+    }
+    await update.message.reply_text(
+        welcome_text.get(lang, welcome_text["fa"]),
+        reply_markup=get_main_menu(lang),
+        parse_mode=ParseMode.HTML
+    )
+    
 async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
     """
     ارسال سؤال به GPT و برگرداندن پاسخ متنی.
@@ -345,27 +387,6 @@ async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
     except APIError as exc:
         logger.error("OpenAI API error: %s", exc)
         return f"⚠️ خطای سرویس OpenAI: {exc}"
-
-
-# ─── تقسیم پیام بلند به قطعات کوچکتر ─────────────────────────────────────────
-def _split_message(text: str, limit: int = 4096) -> List[str]:
-    """
-    متن بیش‌ازحد بلند را روی \n\n یا \n یا فاصله می‌شکند تا تلگرام خطا ندهد.
-    """
-    if len(text) <= limit:
-        return [text]
-
-    parts: List[str] = []
-    while len(text) > limit:
-        breakpoints = [text.rfind(sep, 0, limit) for sep in ("\n\n", "\n", " ")]
-        idx = max(breakpoints)
-        idx = idx if idx != -1 else limit
-        parts.append(text[:idx].rstrip())
-        text = text[idx:].lstrip()
-    if text:
-        parts.append(text)
-    return parts
-
 
 async def send_long(update: Update, text: str, *, parse_mode: str | None = ParseMode.HTML) -> None:
     """ارسال امن پیام‌های طولانی در چند بخش پیاپی."""
@@ -666,21 +687,66 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ─── روتر پیام‌های متنی منو ─────────────────────────────────────────────────
+async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
+    text = (update.message.text or "").strip()
+    lang_options = {
+        "فارسی": "fa",
+        "English": "en",
+        "کوردی": "ku"
+    }
+
+    if text in lang_options:
+        lang = lang_options[text]
+        context.user_data["lang"] = lang
+
+        reply_text = {
+            "fa": "✅ زبان به فارسی تغییر کرد.",
+            "en": "✅ Language changed to English.",
+            "ku": "✅ زمان بۆ کوردی گۆڕدرا."
+        }[lang]
+
+        await update.message.reply_text(reply_text, reply_markup=get_main_menu(lang))
+        return
+
+    await text_router(update, context)
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "").strip()
-    if text.startswith("/"):
-        return  # فرمان‌ها جداگانه هندل می‌شوند
+    lang = get_lang(context)
 
-    if text == "🛒 خرید اشتراک":
-        await buy_cmd(update, context)
-    elif text == "📤 ارسال رسید":
-        await send_receipt_cmd(update, context)
-    elif text == "⚖️ سؤال حقوقی":
-        await update.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML)
-    elif text == "ℹ️ درباره توکن":
-        await about_token(update, context)  # فرض بر این که بعداً تعریف شده
+    command_map = {
+        "fa": {
+            "🛒 خرید اشتراک": buy_cmd,
+            "📤 ارسال رسید": send_receipt_cmd,
+            "⚖️ سؤال حقوقی": lambda u, c: u.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML),
+            "ℹ️ درباره توکن": about_token
+        },
+        "en": {
+            "🛒 Buy Subscription": buy_cmd,
+            "📤 Send Receipt": send_receipt_cmd,
+            "⚖️ Legal Question": lambda u, c: u.message.reply_text("Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>", parse_mode=ParseMode.HTML),
+            "ℹ️ About Token": about_token
+        },
+        "ku": {
+            "🛒 کڕینی بەشداریکردن": buy_cmd,
+            "📤 ناردنی پسوڵە": send_receipt_cmd,
+            "⚖️ پرسیاری یاسایی": lambda u, c: u.message.reply_text("پرسیارەکەت بنێرە لە دوای /ask.\nبۆ نموونە:\n<code>/ask یاسای کار چییە؟</code>", parse_mode=ParseMode.HTML),
+            "ℹ️ دەربارەی تۆکێن": about_token
+        }
+    }
+
+    commands = command_map.get(lang, command_map["fa"])
+    command_func = commands.get(text)
+
+    if command_func:
+        await command_func(update, context)
     else:
-        await update.message.reply_text("دستور نامعتبر است. از منو استفاده کنید.")
+        await update.message.reply_text({
+            "fa": "دستور نامعتبر است. از منو استفاده کنید.",
+            "en": "Invalid command. Please use the menu.",
+            "ku": "فەرمانەکە نادروستە. تکایە لە مێنوو بەکاربێنە."
+        }.get(lang, "دستور نامعتبر است. از منو استفاده کنید."))
+        
 # ---------------------------------------------------------------------------#
 # 6. Token info, handler wiring & main                                       #
 # ---------------------------------------------------------------------------#
