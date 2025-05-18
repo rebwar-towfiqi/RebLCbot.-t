@@ -71,6 +71,10 @@ def getenv_or_die(key: str) -> str:
         raise RuntimeError(f"Environment variable {key!r} is missing")
     return value
 
+def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """برگرداندن زبان کاربر از session یا مقدار پیش‌فرض"""
+    return context.user_data.get("lang", "fa")
+
 # ---------------------------------------------------------------------------#
 # 1. Database layer – PostgreSQL → SQLite fallback                           #
 # ---------------------------------------------------------------------------#
@@ -299,8 +303,13 @@ def save_question(user_id: int, question: str, answer: str) -> None:
 # ---------------------------------------------------------------------------#
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = (update.effective_user.language_code or "fa").split("-")[0]
-    text = tr("welcome", lang)
-    await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
+    if lang not in ("fa", "en", "ku"):
+        lang = "fa"
+
+    context.user_data["lang"] = lang  # ذخیره زبان انتخابی کاربر
+
+    await update.message.reply_text(tr("welcome", lang), reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
+
 
 async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
     """
@@ -507,16 +516,19 @@ WELCOME_EN = (
 # جایگزینی تابع
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = (update.effective_user.language_code or "fa").split("-")[0]
-    text = tr(
-        "buy",
-        lang,
-        ton=TON_WALLET_ADDR,
-        bank=BANK_CARD,
-        rlc="1,800,000",
-        rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "🧾 آدرس تنظیم نشده"),
+    lang = get_lang(context)
+    await update.message.reply_text(
+        tr(
+            "buy",
+            lang,
+            ton=TON_WALLET_ADDR,
+            bank=BANK_CARD,
+            rlc="1,800,000",
+            rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "🧾 آدرس تنظیم نشده"),
+        ),
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 MENU_KB = "کیبورد منو"
 
@@ -540,14 +552,13 @@ BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = (update.effective_user.language_code or "fa").split("-")[0]
+    lang = get_lang(context)
     context.user_data["awaiting_receipt"] = True
     await update.message.reply_text(tr("send_receipt_prompt", lang))
 
-
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
-    lang = (update.effective_user.language_code or "fa").split("-")[0]
+    lang = get_lang(context)
 
     if has_active_subscription(uid):
         row = _fetchone("SELECT expire_at FROM users WHERE user_id=" + _PLACEHOLDER, (uid,))
@@ -562,9 +573,10 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(tr("no_sub", lang))
 
 
+
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
-    lang = (update.effective_user.language_code or "fa").split("-")[0]
+    lang = get_lang(context)
 
     if not has_active_subscription(uid):
         await update.message.reply_text(tr("no_sub", lang))
