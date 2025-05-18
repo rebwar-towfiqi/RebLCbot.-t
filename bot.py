@@ -17,6 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
 from telegram import ReplyKeyboardMarkup, KeyboardButton
+from texts import TEXTS
 # ─── کتابخانه‌های خارجی ───────────────────────────────────────────────────────
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
@@ -51,6 +52,11 @@ client = AsyncOpenAI()
 # ---------------------------------------------------------------------------#
 # 0. Utilities                                                               #
 # ---------------------------------------------------------------------------#
+def tr(key: str, lang: str = "fa", **kwargs) -> str:
+    """دریافت متن ترجمه‌شده بر اساس کلید و زبان کاربر"""
+    base = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
+    return base.format(**kwargs)
+
 def getenv_or_die(key: str) -> str:
     """
     برمی‌گرداند مقدار متغیر محیطی *key*؛
@@ -291,6 +297,11 @@ def save_question(user_id: int, question: str, answer: str) -> None:
 # ---------------------------------------------------------------------------#
 # 3. OpenAI interface & long-message helper                                  #
 # ---------------------------------------------------------------------------#
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = (update.effective_user.language_code or "fa").split("-")[0]
+    text = tr("welcome", lang)
+    await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
+
 async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
     """
     ارسال سؤال به GPT و برگرداندن پاسخ متنی.
@@ -496,22 +507,16 @@ WELCOME_EN = (
 # جایگزینی تابع
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        BUY_TEXT_FA,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
+    lang = (update.effective_user.language_code or "fa").split("-")[0]
+    text = tr(
+        "buy",
+        lang,
+        ton=TON_WALLET_ADDR,
+        bank=BANK_CARD,
+        rlc="1,800,000",
+        rlc_addr=os.getenv("RLC_WALLET_ADDRESS", "🧾 آدرس تنظیم نشده"),
     )
-TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
-
-BUY_TEXT_FA = (
-    "🛒 <b>راهنمای خرید اشتراک</b>\n\n"
-    "۱️⃣ پرداخت 1 TON به آدرس کیف‌پول زیر:\n"
-    f"<code>{TON_WALLET_ADDR}</code>\n\n"
-    "۲️⃣ یا واریز ۵۰۰٬۰۰۰ تومان به شماره کارت زیر:\n"
-    f"<code>{BANK_CARD}</code>\n\n"
-    "پس از پرداخت، از دکمه «📤 ارسال رسید» استفاده کنید."
-)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 MENU_KB = "کیبورد منو"
 
@@ -528,11 +533,6 @@ MENU_KB = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = "fa" if update.effective_user.language_code.startswith("fa") else "en"
-    text = WELCOME_FA if lang == "fa" else WELCOME_EN
-    await update.message.reply_text(text, reply_markup=MENU_KB, parse_mode=ParseMode.HTML)
-
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
@@ -540,35 +540,47 @@ BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang = (update.effective_user.language_code or "fa").split("-")[0]
     context.user_data["awaiting_receipt"] = True
-    await update.message.reply_text("لطفاً تصویر یا متن رسید پرداخت را ارسال کنید.")
+    await update.message.reply_text(tr("send_receipt_prompt", lang))
+
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
+    lang = (update.effective_user.language_code or "fa").split("-")[0]
+
     if has_active_subscription(uid):
         row = _fetchone("SELECT expire_at FROM users WHERE user_id=" + _PLACEHOLDER, (uid,))
         expire_at = row[0]
         if isinstance(expire_at, str):
             expire_at = datetime.fromisoformat(expire_at)
         await update.message.reply_text(
-            f"✅ اشتراک شما تا <b>{expire_at:%Y-%m-%d}</b> فعال است.",
+            tr("status_active", lang).format(date=expire_at.strftime("%Y-%m-%d")),
             parse_mode=ParseMode.HTML,
         )
     else:
-        await update.message.reply_text(MSG_NO_SUB_FA)
+        await update.message.reply_text(tr("no_sub", lang))
+
 
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id
+    lang = (update.effective_user.language_code or "fa").split("-")[0]
+
     if not has_active_subscription(uid):
-        await update.message.reply_text(MSG_NO_SUB_FA)
+        await update.message.reply_text(tr("no_sub", lang))
         return
 
     question = " ".join(context.args)
     if not question:
-        await update.message.reply_text("❓ سؤال را بعد از دستور بنویسید.")
+        await update.message.reply_text({
+            "fa": "❓ لطفاً سؤال را بعد از دستور بنویسید.",
+            "en": "❓ Please write your legal question after the command.",
+            "ku": "❓ تکایە پرسیارت لە دوای فەرمانەکە بنوسە.",
+        }.get(lang, "❓ لطفاً سؤال را بعد از دستور بنویسید."))
         return
 
-    await answer_question(update, context, question)
+    await answer_question(update, context, question, lang)
+
 
 # ─── روتر پیام‌های متنی منو ─────────────────────────────────────────────────
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
