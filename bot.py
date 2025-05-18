@@ -531,9 +531,11 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             rlc_amount="1,800,000",
             ton_amount="10",            # مقدار دقیق TON را وارد کنید
             toman_amount="300,000"      # مبلغ به تومان
+        ),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
+
 
 MENU_KB = "کیبورد منو"
 
