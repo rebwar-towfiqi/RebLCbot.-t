@@ -11,6 +11,9 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import whisper
+import tempfile
+import ffmpeg
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
@@ -37,7 +40,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-
+from telegram.ext import MessageHandler, filters
 # ─── محیط و تنظیمات جهانی ─────────────────────────────────────────────────────
 load_dotenv()  # متغیرهای محیطی را از .env می‌خواند
 
@@ -52,6 +55,14 @@ client = AsyncOpenAI()
 # ---------------------------------------------------------------------------#
 # 0. Utilities                                                               #
 # ---------------------------------------------------------------------------#
+# بارگذاری مدل فقط یک‌بار در ابتدای اجرا
+whisper_model = whisper.load_model("base")
+
+def voice_to_text(file_path: str) -> str:
+    """تبدیل فایل صوتی به متن با استفاده از Whisper"""
+    result = whisper_model.transcribe(file_path)
+    return result["text"]
+
 def get_main_menu(lang: str):
     menus = {
         "fa": [
@@ -251,6 +262,24 @@ def _fetchone(sql: str, params: Tuple = ()):
             finally:
                 cur.close()
 
+# ─── تقسیم پیام بلند به قطعات کوچکتر ─────────────────────────────────────────
+def _split_message(text: str, limit: int = 4096) -> List[str]:
+    """
+    متن بیش‌ازحد بلند را روی \n\n یا \n یا فاصله می‌شکند تا تلگرام خطا ندهد.
+    """
+    if len(text) <= limit:
+        return [text]
+
+    parts: List[str] = []
+    while len(text) > limit:
+        breakpoints = [text.rfind(sep, 0, limit) for sep in ("\n\n", "\n", " ")]
+        idx = max(breakpoints)
+        idx = idx if idx != -1 else limit
+        parts.append(text[:idx].rstrip())
+        text = text[idx:].lstrip()
+    if text:
+        parts.append(text)
+    return parts
 
 # ─────────────────────────────────────────────────────────────────────────────
 def upsert_user(user_id: int, username: str | None,
@@ -314,24 +343,6 @@ def has_active_subscription(user_id: int) -> bool:
     if isinstance(expire_at, str):
         expire_at = datetime.fromisoformat(expire_at)
     return expire_at >= datetime.utcnow()
-# ─── تقسیم پیام بلند به قطعات کوچکتر ─────────────────────────────────────────
-def _split_message(text: str, limit: int = 4096) -> List[str]:
-    """
-    متن بیش‌ازحد بلند را روی \n\n یا \n یا فاصله می‌شکند تا تلگرام خطا ندهد.
-    """
-    if len(text) <= limit:
-        return [text]
-
-    parts: List[str] = []
-    while len(text) > limit:
-        breakpoints = [text.rfind(sep, 0, limit) for sep in ("\n\n", "\n", " ")]
-        idx = max(breakpoints)
-        idx = idx if idx != -1 else limit
-        parts.append(text[:idx].rstrip())
-        text = text[idx:].lstrip()
-    if text:
-        parts.append(text)
-    return parts
 
 # ─────────────────────────────────────────────────────────────────────────────
 def save_question(user_id: int, question: str, answer: str) -> None:
@@ -356,7 +367,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=get_main_menu(lang),
         parse_mode=ParseMode.HTML
     )
-    
+
 async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
     """
     ارسال سؤال به GPT و برگرداندن پاسخ متنی.
@@ -387,6 +398,38 @@ async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
     except APIError as exc:
         logger.error("OpenAI API error: %s", exc)
         return f"⚠️ خطای سرویس OpenAI: {exc}"
+
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_lang(context)
+
+    if not has_active_subscription(uid):
+        await update.message.reply_text(tr("no_sub", lang))
+        return
+
+    voice_file = await update.message.voice.get_file()
+
+    # دانلود فایل در یک فایل موقت
+    with tempfile.NamedTemporaryFile(suffix=".ogg") as temp_audio:
+        await voice_file.download_to_drive(temp_audio.name)
+
+        await update.message.reply_text({
+            "fa": "🎤 در حال پردازش صدای شما...",
+            "en": "🎤 Processing your voice message...",
+            "ku": "🎤 پەیامی دەنگیت هەڵسەنگاندنە..."
+        }.get(lang, "در حال پردازش صوت..."))
+
+        # تبدیل صوت به متن
+        try:
+            question_text = voice_to_text(temp_audio.name)
+        except Exception as e:
+            logger.error("Voice processing error: %s", e)
+            await update.message.reply_text("❌ خطا در تبدیل صوت به متن.")
+            return
+
+    # ارسال به OpenAI و دریافت پاسخ
+    await answer_question(update, context, question_text, lang)
+
 
 async def send_long(update: Update, text: str, *, parse_mode: str | None = ParseMode.HTML) -> None:
     """ارسال امن پیام‌های طولانی در چند بخش پیاپی."""
@@ -568,34 +611,6 @@ MENU_KB = ReplyKeyboardMarkup(
 TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
 BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
 
-
-async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش کیبورد انتخاب زبان هنگام اجرای /lang"""
-    await update.message.reply_text(
-        "لطفاً زبان مورد نظر را انتخاب کنید:\nPlease select your preferred language:\nتکایە زمانت هەلبژێرە:",
-        reply_markup=LANG_KB,
-    )
-
-async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
-    text = (update.message.text or "").strip()
-    lang_options = {
-        "فارسی": "fa",
-        "English": "en",
-        "کوردی": "ku"
-    }
-
-    if text in lang_options:
-        context.user_data["lang"] = lang_options[text]
-        await update.message.reply_text({
-            "fa": "✅ زبان به فارسی تغییر کرد.",
-            "en": "✅ Language changed to English.",
-            "ku": "✅ زمان بۆ کوردی گۆڕدرا."
-        }[lang_options[text]], reply_markup=MENU_KB)
-    else:
-        await text_router(update, context)
-
-
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = get_lang(context)
     ton_wallet = getenv_or_die("TON_WALLET_ADDRESS")
@@ -605,7 +620,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     price_text = {
         "fa": (
             f"🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 300،000 تومان\n"
+            f"💳 کارت بانکی: 300٬000 تومان\n"
             f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
             f"💎 تون کوین (TON): 1 \n"
             f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
@@ -639,7 +654,12 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-
+async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش کیبورد انتخاب زبان هنگام اجرای /lang"""
+    await update.message.reply_text(
+        "لطفاً زبان مورد نظر را انتخاب کنید:\nPlease select your preferred language:\nتکایە زمانت هەلبژێرە:",
+        reply_markup=LANG_KB,
+    )
 
 
 # دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
@@ -710,6 +730,7 @@ async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await text_router(update, context)
+
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "").strip()
     lang = get_lang(context)
@@ -746,7 +767,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "en": "Invalid command. Please use the menu.",
             "ku": "فەرمانەکە نادروستە. تکایە لە مێنوو بەکاربێنە."
         }.get(lang, "دستور نامعتبر است. از منو استفاده کنید."))
-        
+
 # ---------------------------------------------------------------------------#
 # 6. Token info, handler wiring & main                                       #
 # ---------------------------------------------------------------------------#
@@ -796,6 +817,41 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         disable_web_page_preview=True,
     )
 
+import whisper
+import tempfile
+
+model = whisper.load_model("base")  # می‌توانید از مدل‌های دقیق‌تر مانند "small" یا "medium" هم استفاده کنید
+
+async def voice_to_text(file_path):
+    result = model.transcribe(file_path)
+    return result["text"]
+
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = get_lang(context)
+
+    if not has_active_subscription(user_id):
+        await update.message.reply_text(tr("no_sub", lang))
+        return
+
+    voice_file = await update.message.voice.get_file()
+
+    # دانلود فایل صوتی
+    with tempfile.NamedTemporaryFile(suffix=".ogg") as voice_temp:
+        await voice_file.download_to_drive(voice_temp.name)
+
+        await update.message.reply_text({
+            "fa": "🎤 در حال پردازش سؤال صوتی شما...",
+            "en": "🎤 Processing your voice message...",
+            "ku": "🎤 هەڵسەنگاندنی دەنگی نێردراوت..."
+        }[lang])
+
+        # تبدیل صوت به متن
+        question_text = await voice_to_text(voice_temp.name)
+
+    # ارسال پاسخ تولیدشده توسط OpenAI
+    await answer_question(update, context, question_text, lang)
+
 
 # ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
@@ -813,7 +869,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=1)
     app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=2)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=3)
-
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 def main() -> None:
