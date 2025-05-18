@@ -543,11 +543,12 @@ def register_handlers(app):
         # --- انتخاب زبان (Language Keyboard) ---
 LANG_KB = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("🇮🇷 فارسی"), KeyboardButton("🇬🇧 English"), KeyboardButton("🇮🇶 کوردی")],
+        [KeyboardButton("فارسی"), KeyboardButton("English"), KeyboardButton("کوردی")],
     ],
     resize_keyboard=True,
     one_time_keyboard=True,
 )
+
 # ─── فرمان‌ها ────────────────────────────────────────────────────────────────
 MENU_KB = ReplyKeyboardMarkup(
     [
