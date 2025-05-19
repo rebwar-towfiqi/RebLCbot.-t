@@ -1,26 +1,34 @@
 ###############################################
-# RebLawBot – Dockerfile                      #
+# RebLCbot – Secure, Whisper-Ready Dockerfile #
 ###############################################
-# Base image: official slim Python (small footprint)
+
+# 1. پایه: Python سبک برای حجم کمتر
 FROM python:3.11-slim
 
-# Set working directory inside container
+# 2. نصب ابزارهای سیستمی موردنیاز: git + ffmpeg + build tools
+RUN apt-get update && apt-get install -y \
+    git \
+    ffmpeg \
+    libsndfile1 \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. تنظیم پوشه کاری داخل کانتینر
 WORKDIR /app
 
-# Prevent Python from writing .pyc files and buffer stdout/stderr
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+# 4. غیرفعال کردن .pyc و بافر stdout/stderr برای دیباگ راحت‌تر
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Copy requirements first to leverage Docker layer caching
-COPY requirements.txt ./
+# 5. کپی requirements.txt و نصب پکیج‌های پایتون (استفاده از لایه cache)
+COPY requirements.txt .
 
-# Install Python dependencies
+# 6. ارتقای pip و نصب پکیج‌ها از requirements.txt
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application source code
+# 7. کپی کل پروژه
 COPY . .
 
-# Expose no ports – the bot connects outward via HTTPS long‑polling
-
-# Default command: run the Telegram bot
+# 8. اجرای ربات
 CMD ["python", "bot.py"]
