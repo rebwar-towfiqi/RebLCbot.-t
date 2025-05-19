@@ -2,3 +2,5 @@ python-telegram-bot==20.8
 openai>=1.14.1
 python-dotenv==1.0.1
 psycopg2-binary==2.9.10
+whisper @ git+https://github.com/openai/whisper.git
+ffmpeg-python
