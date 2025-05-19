@@ -752,6 +752,29 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     else:
         await update.message.reply_text("❌ دستور نامعتبر است. لطفاً از منو استفاده کنید.")
 
+
+async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
+    text = (update.message.text or "").strip()
+    lang_options = {
+        "فارسی": "fa",
+        "English": "en",
+        "کوردی": "ku"
+    }
+
+    if text in lang_options:
+        lang = lang_options[text]
+        context.user_data["lang"] = lang
+
+        await update.message.reply_text({
+            "fa": "✅ زبان به فارسی تغییر کرد.",
+            "en": "✅ Language changed to English.",
+            "ku": "✅ زمان بۆ کوردی گۆڕدرا."
+        }[lang], reply_markup=get_main_menu(lang))
+        return
+
+    await text_router(update, context)
+
 # ---------------------------------------------------------------------------#
 # 6. Token info, handler wiring & main                                       #
 # ---------------------------------------------------------------------------#
