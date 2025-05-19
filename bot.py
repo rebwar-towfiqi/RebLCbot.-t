@@ -67,21 +67,22 @@ def get_main_menu(lang: str):
     menus = {
         "fa": [
             [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
-            [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
-            [KeyboardButton("/lang")]
+            [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("🎤 سؤال صوتی")],
+            [KeyboardButton("ℹ️ درباره توکن"), KeyboardButton("/lang")]
         ],
         "en": [
             [KeyboardButton("🛒 Buy Subscription"), KeyboardButton("📤 Send Receipt")],
-            [KeyboardButton("⚖️ Legal Question"), KeyboardButton("ℹ️ About Token")],
-            [KeyboardButton("/lang")]
+            [KeyboardButton("⚖️ Legal Question"), KeyboardButton("🎤 Voice Question")],
+            [KeyboardButton("ℹ️ About Token"), KeyboardButton("/lang")]
         ],
         "ku": [
             [KeyboardButton("🛒 کڕینی بەشداریکردن"), KeyboardButton("📤 ناردنی پسوڵە")],
-            [KeyboardButton("⚖️ پرسیاری یاسایی"), KeyboardButton("ℹ️ دەربارەی تۆکێن")],
-            [KeyboardButton("/lang")]
+            [KeyboardButton("⚖️ پرسیاری یاسایی"), KeyboardButton("🎤 پرسیاری دەنگی")],
+            [KeyboardButton("ℹ️ دەربارەی تۆکێن"), KeyboardButton("/lang")]
         ]
     }
     return ReplyKeyboardMarkup(menus.get(lang, menus["fa"]), resize_keyboard=True)
+
 
 
 def tr(key: str, lang: str = "fa", **kwargs) -> str:
@@ -707,66 +708,49 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ─── روتر پیام‌های متنی منو ─────────────────────────────────────────────────
-async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
-    text = (update.message.text or "").strip()
-    lang_options = {
-        "فارسی": "fa",
-        "English": "en",
-        "کوردی": "ku"
-    }
-
-    if text in lang_options:
-        lang = lang_options[text]
-        context.user_data["lang"] = lang
-
-        reply_text = {
-            "fa": "✅ زبان به فارسی تغییر کرد.",
-            "en": "✅ Language changed to English.",
-            "ku": "✅ زمان بۆ کوردی گۆڕدرا."
-        }[lang]
-
-        await update.message.reply_text(reply_text, reply_markup=get_main_menu(lang))
-        return
-
-    await text_router(update, context)
-
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "").strip()
     lang = get_lang(context)
 
-    command_map = {
-        "fa": {
-            "🛒 خرید اشتراک": buy_cmd,
-            "📤 ارسال رسید": send_receipt_cmd,
-            "⚖️ سؤال حقوقی": lambda u, c: u.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML),
-            "ℹ️ درباره توکن": about_token
-        },
-        "en": {
-            "🛒 Buy Subscription": buy_cmd,
-            "📤 Send Receipt": send_receipt_cmd,
-            "⚖️ Legal Question": lambda u, c: u.message.reply_text("Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>", parse_mode=ParseMode.HTML),
-            "ℹ️ About Token": about_token
-        },
-        "ku": {
-            "🛒 کڕینی بەشداریکردن": buy_cmd,
-            "📤 ناردنی پسوڵە": send_receipt_cmd,
-            "⚖️ پرسیاری یاسایی": lambda u, c: u.message.reply_text("پرسیارەکەت بنێرە لە دوای /ask.\nبۆ نموونە:\n<code>/ask یاسای کار چییە؟</code>", parse_mode=ParseMode.HTML),
-            "ℹ️ دەربارەی تۆکێن": about_token
-        }
-    }
+    # دستورات منو بر اساس زبان
+    if lang == "fa":
+        if text == "🛒 خرید اشتراک":
+            await buy_cmd(update, context)
+        elif text == "📤 ارسال رسید":
+            await send_receipt_cmd(update, context)
+        elif text == "⚖️ سؤال حقوقی":
+            await update.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML)
+        elif text == "🎤 سؤال صوتی":
+            await update.message.reply_text("🎙️ لطفاً سؤال خود را به صورت پیام صوتی (voice) ارسال نمایید.\n\n📌 فقط پیام صوتی تلگرام پشتیبانی می‌شود.")
+        elif text == "ℹ️ درباره توکن":
+            await about_token(update, context)
 
-    commands = command_map.get(lang, command_map["fa"])
-    command_func = commands.get(text)
+    elif lang == "en":
+        if text == "🛒 Buy Subscription":
+            await buy_cmd(update, context)
+        elif text == "📤 Send Receipt":
+            await send_receipt_cmd(update, context)
+        elif text == "⚖️ Legal Question":
+            await update.message.reply_text("Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>", parse_mode=ParseMode.HTML)
+        elif text == "🎤 Voice Question":
+            await update.message.reply_text("🎙️ Please send your legal question as a Telegram voice message.\n\n📌 Only Telegram voice messages are supported.")
+        elif text == "ℹ️ About Token":
+            await about_token(update, context)
 
-    if command_func:
-        await command_func(update, context)
+    elif lang == "ku":
+        if text == "🛒 کڕینی بەشداریکردن":
+            await buy_cmd(update, context)
+        elif text == "📤 ناردنی پسوڵە":
+            await send_receipt_cmd(update, context)
+        elif text == "⚖️ پرسیاری یاسایی":
+            await update.message.reply_text("پرسیارەکەت بنێرە لە دوای /ask.\nنموونە:\n<code>/ask یاسای کار چییە؟</code>", parse_mode=ParseMode.HTML)
+        elif text == "🎤 پرسیاری دەنگی":
+            await update.message.reply_text("🎙️ تکایە پرسیارەکەت بە شێوەی پەیامی دەنگی بنێرە.\n\n📌 تەنها پەیامەکانی دەنگی تێلەگرام پشتیوانی دەکرێن.")
+        elif text == "ℹ️ دەربارەی تۆکێن":
+            await about_token(update, context)
+
     else:
-        await update.message.reply_text({
-            "fa": "دستور نامعتبر است. از منو استفاده کنید.",
-            "en": "Invalid command. Please use the menu.",
-            "ku": "فەرمانەکە نادروستە. تکایە لە مێنوو بەکاربێنە."
-        }.get(lang, "دستور نامعتبر است. از منو استفاده کنید."))
+        await update.message.reply_text("❌ دستور نامعتبر است. لطفاً از منو استفاده کنید.")
 
 # ---------------------------------------------------------------------------#
 # 6. Token info, handler wiring & main                                       #
@@ -851,6 +835,11 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # ارسال پاسخ تولیدشده توسط OpenAI
     await answer_question(update, context, question_text, lang)
+    await update.message.reply_text({
+    "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال صوتی دیگری بفرستید.",
+    "en": "✅ Answer sent. You may send another voice question if needed.",
+    "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری دەنگییەکی تر بنێریت."
+}[lang])
 
 
 # ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
