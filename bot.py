@@ -621,7 +621,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     price_text = {
         "fa": (
             f"🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 700,000 تومان\n"
+            f"💳 کارت بانکی: 400,000 تومان\n"
             f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
             f"💎 تون کوین (TON): 1 \n"
             f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
@@ -630,7 +630,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ),
         "en": (
             f"🔸 One-month subscription price:\n\n"
-            f"💳 Bank Card: 700,000 IRR\n"
+            f"💳 Bank Card: 400,000 IRR\n"
             f"🏦 Card Number: <code>{bank_card}</code>\n\n"
             f"💎 TON Coin (TON): 1 \n"
             f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
@@ -639,7 +639,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ),
         "ku": (
             f"🔸 نرخی بەشداریکردنی مانگانە:\n\n"
-            f"💳 کارتی بانک: 700,000 تومان\n"
+            f"💳 کارتی بانک: 400,000 تومان\n"
             f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
             f"💎 تۆن کۆین (TON): 1 \n"
             f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
