@@ -1,120 +1,12 @@
-# RebLawBot
+# RebLawBot Admin Panel
 
-**RebLawBot** is a Telegram bot that sells paid subscriptions and answers legal questions using OpenAI. It accepts payments in **TON**, **RLC (RebLawCoin)**, or fiat via bank card.
-
----
+This directory contains the FastAPI-based admin panel for managing RebLawBot users, subscriptions, and payment receipts.
 
 ## Features
 
-| Command           | Description                                         |
-| ----------------- | --------------------------------------------------- |
-| `/start`, `/help` | Welcome and help menu                               |
-| `/buy`            | Shows payment instructions (TON / RLC / card)       |
-| `/send_receipt`   | Upload receipt for manual approval                  |
-| `/status`         | Check subscription expiration date                  |
-| `/ask <question>` | Ask a legal question (requires active subscription) |
+✅ View and manage registered users  
+✅ Display and approve/reject payment receipts (image or text)  
+✅ Built with FastAPI, Jinja2, SQLAlchemy
 
----
+## Structure
 
-## Prerequisites
-
-* Python **3.11** or higher
-* A PostgreSQL database (e.g. Railway, Render, Supabase)
-* Telegram bot token & admin user ID
-* OpenAI API key
-
----
-
-## Quick Start (local)
-
-```bash
-# 1. Clone repository
-$ git clone https://github.com/your-user/reblawbot.git
-$ cd reblawbot
-
-# 2. Install dependencies
-$ pip install -r requirements.txt
-
-# 3. Copy environment template and edit
-$ cp .env.example .env   # then fill values
-
-# 4. Run the bot
-$ python bot.py
-```
-
----
-
-## Docker
-
-```bash
-# Build image
-$ docker build -t reblawbot:latest .
-
-# Run container with env vars
-$ docker run --rm --name reblawbot --env-file .env reblawbot:latest
-```
-
-> The bot uses long‑polling, so no ports need to be exposed.
-
----
-
-## Deploy to Railway (Docker)
-
-1. Push code to GitHub (see **Git** section below).
-2. Create a *New Project ➜ Deploy from GitHub* in Railway.
-3. Select the repository; Railway detects `Dockerfile` automatically.
-4. Add environment variables in **Variables** tab (copy from `.env`).
-5. Click **Deploy**. Logs show `🤖 RebLawBot started successfully` when ready.
-
-### Deploy with Buildpacks (optional)
-
-If you prefer Railway Buildpacks instead of Docker:
-
-* Delete or rename `Dockerfile`.
-* Keep `Procfile` & `requirements.txt` at repo root.
-* Railway detects Python and uses `Procfile` (`worker: python bot.py`).
-
----
-
-## Git workflow
-
-```bash
-# Stage & commit
-$ git add .
-$ git commit -m "Initial RebLawBot release"
-
-# Set remote and push
-$ git remote add origin https://github.com/your-user/reblawbot.git
-$ git push -u origin main
-```
-
----
-
-## Environment Variables
-
-| Key                  | Description                                         |
-| -------------------- | --------------------------------------------------- |
-| `BOT_TOKEN`          | Telegram bot token                                  |
-| `ADMIN_ID`           | Telegram numeric ID of admin account                |
-| `OPENAI_API_KEY`     | OpenAI API key                                      |
-| `DATABASE_URL`       | Postgres DSN (postgresql://user\:pwd\@host:5432/db) |
-| `TON_WALLET_ADDRESS` | Wallet for TON payments                             |
-| `RLC_WALLET_ADDRESS` | Wallet for RLC payments                             |
-| `BANK_CARD_NUMBER`   | Bank card number for fiat                           |
-| `MEMEPAD_LINK`       | Memepad referral link                               |
-
-Fill these in `.env` (never commit real secrets).
-
----
-
-## License
-
-Distributed under the **MIT License**. See `LICENSE` for details.
-
----
-
-## Acknowledgements
-
-* [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
-* [psycopg2](https://www.psycopg.org/)
-* [OpenAI](https://openai.com/)
