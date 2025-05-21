@@ -621,29 +621,29 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     price_text = {
         "fa": (
             f"🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 400,000 تومان\n"
+            f"💳 کارت بانکی: 200,000 تومان\n"
             f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تون کوین (TON): 1 \n"
+            f"💎 تون کوین (TON): 0.2 \n"
             f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,800,000\n"
+            f"🚀 توکن RLC: 1,000,000\n"
             f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
         ),
         "en": (
             f"🔸 One-month subscription price:\n\n"
-            f"💳 Bank Card: 400,000 IRR\n"
+            f"💳 Bank Card: 200,000 IRR\n"
             f"🏦 Card Number: <code>{bank_card}</code>\n\n"
-            f"💎 TON Coin (TON): 1 \n"
+            f"💎 TON Coin (TON): 0.2 \n"
             f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,800,000\n"
+            f"🚀 RLC Token: 1,000,000\n"
             f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
         ),
         "ku": (
             f"🔸 نرخی بەشداریکردنی مانگانە:\n\n"
-            f"💳 کارتی بانک: 400,000 تومان\n"
+            f"💳 کارتی بانک: 200,000 تومان\n"
             f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کۆین (TON): 1 \n"
+            f"💎 تۆن کۆین (TON): 0.5 \n"
             f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
-            f"🚀 تۆکێنی RLC: ١٬٨٠٠٬٠٠٠\n"
+            f"🚀 تۆکێنی RLC: 1,000,000 \n"
             f"🔗 ناونیشانی والت RLC: <code>{rlc_wallet}</code>\n"
         ),
     }
