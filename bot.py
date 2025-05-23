@@ -886,8 +886,6 @@ def register_handlers(app: Application) -> None:
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
 import asyncio
-from telegram.ext import Application
-from telegram import Update
 
 # فرض بر این است که توابع زیر قبلاً تعریف شده‌اند
 # from config import getenv_or_die
