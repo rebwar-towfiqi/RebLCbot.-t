@@ -356,38 +356,6 @@ def save_question(user_id: int, question: str, answer: str) -> None:
 # ---------------------------------------------------------------------------#
 # 3. OpenAI interface & long-message helper                                  #
 # ---------------------------------------------------------------------------#
-async def famous_cases(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = sqlite3.connect("laws.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, title FROM famous_cases")
-    cases = cursor.fetchall()
-    conn.close()
-
-    buttons = [[InlineKeyboardButton(title, callback_data=f"case_{id}")] for id, title in cases]
-    markup = InlineKeyboardMarkup(buttons)
-
-    await update.message.reply_text("📚 لیست پرونده‌های مشهور حقوقی:", reply_markup=markup)
-
-async def case_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    case_id = int(query.data.split("_")[1])
-
-    conn = sqlite3.connect("laws.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT title, summary FROM famous_cases WHERE id = ?", (case_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        title, summary = row
-        text = f"⚖️ <b>{title}</b>\n\n📝 {summary}"
-        await query.message.reply_text(text, parse_mode=ParseMode.HTML)
-    else:
-        await query.message.reply_text("❌ پرونده پیدا نشد.")
-    
-    await query.answer()
-
-
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = get_lang(context)
     welcome_text = {
@@ -636,9 +604,8 @@ MENU_KB = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
         [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
-        [KeyboardButton("/lang")], [KeyboardButton("📚 پرونده‌های مشهور حقوقی")  # این خط را اضافه کنید
+        [KeyboardButton("/lang")],  # این خط را اضافه کنید
     ],
-    ],    
     resize_keyboard=True,
 )
 
@@ -654,29 +621,29 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     price_text = {
         "fa": (
             f"🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 200,000 تومان\n"
+            f"💳 کارت بانکی: 700،000 تومان\n"
             f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تون کوین (TON): 0.2 \n"
+            f"💎 تون کوین (TON): 1 \n"
             f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,000,000 \n"
+            f"🚀 توکن RLC: 1,800,000\n"
             f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
         ),
         "en": (
             f"🔸 One-month subscription price:\n\n"
-            f"💳 Bank Card: 200,000 IRR\n"
+            f"💳 Bank Card: 700،000 IRR\n"
             f"🏦 Card Number: <code>{bank_card}</code>\n\n"
-            f"💎 TON Coin (TON): 0.2 \n"
+            f"💎 TON Coin (TON): 1 \n"
             f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,000,000 \n"
+            f"🚀 RLC Token: 1,800,000\n"
             f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
         ),
         "ku": (
             f"🔸 نرخی بەشداریکردنی مانگانە:\n\n"
-            f"💳 کارتی بانک: 200,000 تومان\n"
+            f"💳 کارتی بانک: 700،000 تومان\n"
             f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کۆین (TON): 0.2 \n"
+            f"💎 تۆن کۆین (TON): 1 \n"
             f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
-            f"🚀 تۆکێنی RLC: 1,000,000 \n"
+            f"🚀 تۆکێنی RLC: ١٬٨٠٠٬٠٠٠\n"
             f"🔗 ناونیشانی والت RLC: <code>{rlc_wallet}</code>\n"
         ),
     }
@@ -907,9 +874,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("lang", lang_cmd))
-    app.add_handler(CommandHandler("famous_cases", famous_cases))
-    
-    app.add_handler(CallbackQueryHandler(case_detail, pattern=r"^case_\d+$"))
+
     app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"), group=0)
 
     # ابتدا متن زبان را بررسی و سپس متن رسید را بررسی کنید
@@ -920,14 +885,11 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
-import asyncio
-from telegram.ext import Application
-
-async def main():
-    # ۱) دریافت توکن
+def main() -> None:
+    # ۱) متغیرهای حیاتی
     bot_token = getenv_or_die("BOT_TOKEN")
 
-    # ۲) آماده‌سازی پایگاه داده
+    # ۲) پایگاه‌داده
     init_db()
 
     # ۳) ساخت اپلیکیشن
@@ -936,15 +898,9 @@ async def main():
     # ۴) ثبت هندلرها
     register_handlers(application)
 
-    # ۵) اجرای polling (یا webhook در صورت نیاز)
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # ۵) اجرا: polling یا webhook بر اساس USE_WEBHOOK
 
-# اجرای async تابع main
-if __name__ == "__main__":
-    asyncio.run(main())
-
-
-
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
