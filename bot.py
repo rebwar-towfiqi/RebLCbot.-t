@@ -906,7 +906,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("lang", lang_cmd))
-
+    app.add_handler(CommandHandler("famous_cases", famous_cases))
+    
+    app.add_handler(CallbackQueryHandler(case_detail, pattern=r"^case_\d+$"))
     app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"), group=0)
 
     # ابتدا متن زبان را بررسی و سپس متن رسید را بررسی کنید
@@ -926,16 +928,13 @@ def main() -> None:
 
     # ۳) ساخت اپلیکیشن
     application = Application.builder().token(bot_token).build()
-
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
     # ۴) ثبت هندلرها
     register_handlers(application)
 
     # ۵) اجرا: polling یا webhook بر اساس USE_WEBHOOK
 
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    application.add_handler(CommandHandler("famous_cases", famous_cases))
-    application.add_handler(CallbackQueryHandler(case_detail, pattern=r"^case_\d+$"))
 
 
 if __name__ == "__main__":
