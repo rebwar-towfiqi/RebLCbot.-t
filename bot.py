@@ -356,6 +356,38 @@ def save_question(user_id: int, question: str, answer: str) -> None:
 # ---------------------------------------------------------------------------#
 # 3. OpenAI interface & long-message helper                                  #
 # ---------------------------------------------------------------------------#
+async def famous_cases(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect("laws.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, title FROM famous_cases")
+    cases = cursor.fetchall()
+    conn.close()
+
+    buttons = [[InlineKeyboardButton(title, callback_data=f"case_{id}")] for id, title in cases]
+    markup = InlineKeyboardMarkup(buttons)
+
+    await update.message.reply_text("📚 لیست پرونده‌های مشهور حقوقی:", reply_markup=markup)
+
+async def case_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    case_id = int(query.data.split("_")[1])
+
+    conn = sqlite3.connect("laws.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT title, summary FROM famous_cases WHERE id = ?", (case_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        title, summary = row
+        text = f"⚖️ <b>{title}</b>\n\n📝 {summary}"
+        await query.message.reply_text(text, parse_mode=ParseMode.HTML)
+    else:
+        await query.message.reply_text("❌ پرونده پیدا نشد.")
+    
+    await query.answer()
+
+
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = get_lang(context)
     welcome_text = {
@@ -625,7 +657,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
             f"💎 تون کوین (TON): 0.2 \n"
             f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,000,000\n"
+            f"🚀 توکن RLC: 1,000,000 \n"
             f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
         ),
         "en": (
@@ -634,14 +666,14 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"🏦 Card Number: <code>{bank_card}</code>\n\n"
             f"💎 TON Coin (TON): 0.2 \n"
             f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,000,000\n"
+            f"🚀 RLC Token: 1,000,000 \n"
             f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
         ),
         "ku": (
             f"🔸 نرخی بەشداریکردنی مانگانە:\n\n"
             f"💳 کارتی بانک: 200,000 تومان\n"
             f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کۆین (TON): 0.5 \n"
+            f"💎 تۆن کۆین (TON): 0.2 \n"
             f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
             f"🚀 تۆکێنی RLC: 1,000,000 \n"
             f"🔗 ناونیشانی والت RLC: <code>{rlc_wallet}</code>\n"
@@ -863,7 +895,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
     "en": "✅ Answer sent. You may send another voice question if needed.",
     "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری دەنگییەکی تر بنێریت."
 }[lang])
-
+    
 
 # ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
@@ -901,6 +933,9 @@ def main() -> None:
     # ۵) اجرا: polling یا webhook بر اساس USE_WEBHOOK
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    application.add_handler(CommandHandler("famous_cases", famous_cases))
+    application.add_handler(CallbackQueryHandler(case_detail, pattern=r"^case_\d+$"))
 
 
 if __name__ == "__main__":
