@@ -636,8 +636,9 @@ MENU_KB = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
         [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
-        [KeyboardButton("/lang")],  # این خط را اضافه کنید
+        [KeyboardButton("/lang")], [KeyboardButton("📚 پرونده‌های مشهور حقوقی")  # این خط را اضافه کنید
     ],
+    ]    
     resize_keyboard=True,
 )
 
