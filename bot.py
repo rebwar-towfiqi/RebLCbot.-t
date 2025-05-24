@@ -886,18 +886,23 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
-import asyncio
-from telegram.ext import Application
-
-async def main() -> None:
+def main() -> None:
+    # ۱) متغیرهای حیاتی
     bot_token = getenv_or_die("BOT_TOKEN")
+
+    # ۲) پایگاه‌داده
     init_db()
 
+    # ۳) ساخت اپلیکیشن
     application = Application.builder().token(bot_token).build()
+
+    # ۴) ثبت هندلرها
     register_handlers(application)
 
-    await application.run_polling()
+    # ۵) اجرا: polling یا webhook بر اساس USE_WEBHOOK
+
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    main()
