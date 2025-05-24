@@ -8,6 +8,7 @@ Version 2025-05-13 (compat OpenAI 1.x)
 from __future__ import annotations
 
 # ─── استاندارد کتابخانه ───────────────────────────────────────────────────────
+import asyncio
 import logging
 import os
 import sqlite3
@@ -885,7 +886,6 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
-import asyncio
 
 # فرض بر این است که توابع زیر قبلاً تعریف شده‌اند
 # from config import getenv_or_die
