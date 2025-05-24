@@ -12,7 +12,9 @@ import asyncio
 import logging
 import os
 import sqlite3
+
 import tempfile
+
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
@@ -77,7 +79,6 @@ def register_handlers(app: Application) -> None:
     # پیام‌های صوتی
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=3)
 
-    
 # ─── محیط و تنظیمات جهانی ─────────────────────────────────────────────────────
 load_dotenv()  # متغیرهای محیطی را از .env می‌خواند
 
@@ -88,7 +89,8 @@ logging.basicConfig(
 logger = logging.getLogger("RebLawBot")
 
 # کلاینت غیرهمزمان OpenAI؛ تمام فراخوانی‌ها از همین نمونه استفاده می‌کنند
-client = AsyncOpenAI()
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 # ---------------------------------------------------------------------------#
 # 0. Utilities                                                               #
 # ---------------------------------------------------------------------------#
@@ -193,7 +195,7 @@ def init_db() -> None:
         _setup_schema_sqlite()
 
         _update_placeholder()  # تنظیم دقیق _PLACEHOLDER برای PostgreSQL یا SQLite
-
+        
 
 def _setup_schema_pg() -> None:
     """ایجاد جدول بر روی PostgreSQL (اگر وجود نداشته باشد)."""
@@ -550,21 +552,16 @@ ADMIN_ID = int(getenv_or_die("ADMIN_ID"))          # آی‌دی تِلگرام�
 SUBS_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))   # طول پیش‌فرض اشتراک
 
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # فقط وقتی منتظر رسید هستیم یا عکس دریافت شده ادامه دهیم
-    if not context.user_data.get("awaiting_receipt") and not update.message.photo:
-        return  # این پیام رسید نیست؛ بگذار هندلر بعدی پردازش کند
-
-    # پس از پذیرش، فلگ را پاک می‌کنیم
-    context.user_data["awaiting_receipt"] = False
-
-    """
-    رسید عکس یا متنی را از کاربر می‌گیرد، با دکمهٔ تأیید/رد برای مدیر می‌فرستد
-    و وضعیت کاربر را 'awaiting' می‌گذارد.
-    """
     msg: Message = update.message
     uid = update.effective_user.id
 
-    # پروفایل کاربر را درج/به‌روزرسانی کنیم
+    # فقط وقتی منتظر رسید هستیم یا پیام شامل عکس باشد ادامه بده
+    if not context.user_data.get("awaiting_receipt") and not msg.photo and not msg.text:
+        return
+
+    context.user_data["awaiting_receipt"] = False
+
+    # ثبت اطلاعات کاربر در دیتابیس
     upsert_user(
         uid,
         msg.from_user.username,
@@ -572,93 +569,76 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         msg.from_user.last_name,
     )
 
-    # ذخیرهٔ درخواست رسید
-    photo_id: Optional[str] = None
-    if msg.photo:
-        photo_id = msg.photo[-1].file_id
-    save_receipt_request(uid, photo_id or "")
+    # ذخیره رسید
+    photo_id: Optional[str] = msg.photo[-1].file_id if msg.photo else None
+    save_receipt_request(uid, photo_id or (msg.text or "متن خالی"))
 
-    # ساخت دکمه‌های اینلاین
-    kb = InlineKeyboardMarkup(
+    # ساخت دکمه‌ها
+    kb = InlineKeyboardMarkup([
         [
-            [
-                InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{uid}"),
-                InlineKeyboardButton("❌ رد", callback_data=f"reject:{uid}"),
-            ]
+            InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{uid}"),
+            InlineKeyboardButton("❌ رد", callback_data=f"reject:{uid}")
         ]
-    )
+    ])
 
-    # ارسال به مدیر
-    caption_head = (
-        f"📄 رسید جدید از <a href='tg://user?id={uid}'>{uid}</a>\n"
-        f"نام: {msg.from_user.full_name}\n"
-        "برای بررسی:"
+    caption = (
+        f"📩 رسید جدید از <a href='tg://user?id={uid}'>{msg.from_user.full_name}</a>\n"
+        f"نام کاربری: @{msg.from_user.username or 'بدون'}\n\nبررسی مدیر:"
     )
     if photo_id:
         await context.bot.send_photo(
-            ADMIN_ID,
-            photo_id,
-            caption=caption_head,
+            chat_id=int(os.getenv("ADMIN_ID")),
+            photo=photo_id,
+            caption=caption,
             reply_markup=kb,
-            parse_mode=ParseMode.HTML,
+            parse_mode=ParseMode.HTML
         )
     else:
-        text = msg.text or "رسید متنی"
+
         await context.bot.send_message(
-            ADMIN_ID,
-            f"{caption_head}\n\n{text}",
+            chat_id=int(os.getenv("ADMIN_ID")),
+            text=f"{caption}\n\n{msg.text}",
             reply_markup=kb,
-            parse_mode=ParseMode.HTML,
+            parse_mode=ParseMode.HTML
         )
 
-    await msg.reply_text("✅ رسید شما برای بررسی ارسال شد؛ لطفاً منتظر تأیید مدیر بمانید.")
+    await msg.reply_text("✅ رسید شما ارسال شد. لطفاً منتظر تأیید مدیر بمانید.")
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    هندلر دکمه‌های اینلاین «تأیید/رد» در پیام مدیر.
-    پس از کلیک، وضعیت پایگاه‌داده را به‌روز کرده و به کاربر اطلاع می‌دهد.
-    """
+
     query = update.callback_query
     await query.answer()
 
     try:
         action, uid_str = query.data.split(":")
-        target_uid = int(uid_str)
-    except (ValueError, AttributeError):
-        await query.answer("❌ دادهٔ دکمه نامعتبر است.", show_alert=True)
+        uid = int(uid_str)
+    except Exception:
+        await query.answer("داده دکمه نامعتبر است.", show_alert=True)
         return
 
-    # بررسی دسترسی فقط برای ADMIN
-    if update.effective_user.id != ADMIN_ID:
-        await query.answer("⛔ فقط مدیر مجاز به انجام این عملیات است.", show_alert=True)
+    if update.effective_user.id != int(os.getenv("ADMIN_ID")):
+        await query.answer("فقط مدیر می‌تواند این کار را انجام دهد.", show_alert=True)
         return
 
     if action == "approve":
-        save_subscription(target_uid, days=SUBS_DAYS)
-        await context.bot.send_message(
-            target_uid,
-            f"🎉 اشتراک شما با موفقیت تأیید شد و به مدت {SUBS_DAYS} روز فعال است. اکنون می‌توانید سؤال حقوقی خود را ارسال کنید.",
-        )
-        status_note = "✔️ تأیید شد"
-    else:  # reject
-        set_user_status(target_uid, "rejected")
-        await context.bot.send_message(
-            target_uid,
-            "❌ رسید شما رد شد. لطفاً با رسید معتبر مجدداً اقدام فرمایید.",
-        )
-        status_note = "❌ رد شد"
+        save_subscription(uid, days=30)
+        await context.bot.send_message(uid, "🎉 اشتراک شما تأیید شد.")
+        status_text = "✔️ تأیید شد"
+    else:
+        set_user_status(uid, "rejected")
+        await context.bot.send_message(uid, "❌ رسید شما رد شد.")
+        status_text = "❌ رد شد"
 
-    # ویرایش پیام اصلی مدیر
+    # ویرایش پیام مدیر
     try:
-        original_text = query.message.caption or query.message.text or ""
-        updated_text = original_text + f"\n\n<b>وضعیت:</b> {status_note}"
+        updated = (query.message.caption or query.message.text or "") + f"\n\n<b>وضعیت:</b> {status_text}"
         if query.message.photo:
-            await query.message.edit_caption(updated_text, parse_mode=ParseMode.HTML)
+            await query.message.edit_caption(updated, parse_mode=ParseMode.HTML)
         else:
-            await query.message.edit_text(updated_text, parse_mode=ParseMode.HTML)
+            await query.message.edit_text(updated, parse_mode=ParseMode.HTML)
     except Exception as e:
-        logger.warning(f"خطا در ویرایش پیام مدیر: {e}")
+        print("❌ خطا در ویرایش پیام:", e)
 
 # ---------------------------------------------------------------------------#
 # 5. Command handlers & menu router                                          #
@@ -982,8 +962,10 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))  
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
+
 def main():
     # دریافت توکن از .env
+   
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise ValueError("❌ BOT_TOKEN در فایل .env یافت نشد.")
@@ -1001,3 +983,5 @@ def main():
 # ❗ این خط باید خارج از تابع باشد
 if __name__ == "__main__":
     main()
+
+logger.info("🤖 RebLawBot started. Waiting for updates...")
