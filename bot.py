@@ -454,6 +454,56 @@ async def answer_question(
     answer = await ask_openai(question, user_lang=lang)
     save_question(uid, question, answer)
     await send_long(update, answer)
+
+# ---------------------------------------------------------------------------#
+# 3.5 Famous cases – نمایش پرونده‌های مشهور                                 #
+# ---------------------------------------------------------------------------#
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackQueryHandler
+
+def get_famous_cases() -> list[tuple[int, str]]:
+    """خواندن لیست پرونده‌ها از laws.db"""
+    with sqlite3.connect("laws.db") as conn:
+        rows = conn.execute("SELECT id, title FROM famous_cases ORDER BY id ASC").fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+def get_case_summary(case_id: int) -> str | None:
+    """دریافت خلاصهٔ پرونده با ID"""
+    with sqlite3.connect("laws.db") as conn:
+        row = conn.execute("SELECT summary FROM famous_cases WHERE id=?", (case_id,)).fetchone()
+    return row[0] if row else None
+
+async def cases_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """نمایش فهرست پرونده‌های مشهور"""
+    cases = get_famous_cases()
+    if not cases:
+        await update.message.reply_text("❌ پرونده‌ای یافت نشد.")
+        return
+
+    keyboard = [
+        [InlineKeyboardButton(title, callback_data=f"case:{cid}")]
+        for cid, title in cases
+    ]
+    await update.message.reply_text(
+        "📚 فهرست پرونده‌های مشهور:\nبرای مشاهده خلاصه، روی یکی از موارد زیر کلیک کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def case_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """پردازش کلیک روی پرونده و ارسال خلاصه"""
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data.startswith("case:"):
+        return
+
+    case_id = int(query.data.split(":")[1])
+    summary = get_case_summary(case_id)
+    if summary:
+        await query.message.reply_text(f"📝 خلاصه:\n\n{summary[:4000]}")
+    else:
+        await query.message.reply_text("❌ خطا در دریافت پرونده.")
+
 # ---------------------------------------------------------------------------#
 # 4. Receipt flow – user → admin review → subscription grant                 #
 # ---------------------------------------------------------------------------#
@@ -875,6 +925,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("lang", lang_cmd))
+    app.add_handler(CommandHandler("cases", cases_cmd))
+    app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
 
     app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"), group=0)
 
@@ -882,10 +934,10 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=1)
     app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=2)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=3)
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))  
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
-# ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
+# ─── نقطهٔ ورود اصلی ───────────────────────────────────────────────────────
 def main() -> None:
     # ۱) متغیرهای حیاتی
     bot_token = getenv_or_die("BOT_TOKEN")
