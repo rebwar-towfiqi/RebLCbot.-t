@@ -982,9 +982,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))  
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
-# ─── نقطهٔ ورود اصلی ───────────────────────────────────────────────────────def main():
+def main():
     # دریافت توکن از .env
-    
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise ValueError("❌ BOT_TOKEN در فایل .env یافت نشد.")
@@ -997,3 +996,8 @@ def register_handlers(app: Application) -> None:
 
     # اجرای polling با دریافت همه نوع آپدیت
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+# ❗ این خط باید خارج از تابع باشد
+if __name__ == "__main__":
+    main()
