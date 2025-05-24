@@ -980,23 +980,30 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ───────────────────────────────────────────────────────
-def main() -> None:
-    # ۱) متغیرهای حیاتی
-    bot_token = getenv_or_die("BOT_TOKEN")
+from telegram.ext import Application
+from telegram import Update
+import os
+from dotenv import load_dotenv
 
-    # ۲) پایگاه‌داده
-    init_db()
+# بارگذاری متغیرهای محیطی
+load_dotenv()
 
-    # ۳) ساخت اپلیکیشن
+def main():
+    # دریافت توکن از .env
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token:
+        raise ValueError("❌ BOT_TOKEN در فایل .env یافت نشد.")
+
+    # ساخت اپلیکیشن تلگرام
     application = Application.builder().token(bot_token).build()
 
-    # ۴) ثبت هندلرها
+    # ثبت هندلرها
     register_handlers(application)
 
-    # ۵) اجرا: polling یا webhook بر اساس USE_WEBHOOK
-
+    # اجرای polling با دریافت همه نوع آپدیت
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
     main()
+
