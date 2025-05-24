@@ -886,12 +886,6 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
-
-# فرض بر این است که توابع زیر قبلاً تعریف شده‌اند
-# from config import getenv_or_die
-# from db import init_db
-# from handlers import register_handlers
-
 async def main() -> None:
     # ۱) متغیرهای حیاتی
     bot_token = getenv_or_die("BOT_TOKEN")
