@@ -2,62 +2,81 @@
 # -*- coding: utf-8 -*-
 """
 RebLawBot – Telegram bot that sells subscriptions and answers legal questions using OpenAI.
-Version 2025-05-13 (compat OpenAI 1.x)
+Version 2025-05-24 – Stable Edition
 """
 
 from __future__ import annotations
 
-# ─── استاندارد کتابخانه ───────────────────────────────────────────────────────
+# ─── استانداردهای پایتون ───────────────────────────────────────────────────────
 import asyncio
 import logging
 import os
 import sqlite3
-import whisper
 import tempfile
-import ffmpeg
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple
-from telegram import ReplyKeyboardMarkup, KeyboardButton
-from texts import TEXTS
+
+# ─── ماژول‌های وابسته به صدا ───────────────────────────────────────────────────
+import whisper
+import ffmpeg
+
 # ─── کتابخانه‌های خارجی ───────────────────────────────────────────────────────
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
 from psycopg2.pool import SimpleConnectionPool
 from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-    Update,
+    Update, Message, InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, KeyboardButton
 )
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (
-    Application,
-    CallbackQueryHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, MessageHandler, filters
 )
-from telegram.ext import MessageHandler, filters
 
-def register_handlers(app: Application):
-    # … سایر هندلرها …
-        app.add_handler(
+# ─── ماژول‌های داخلی ───────────────────────────────────────────────────────────
+from texts import TEXTS
+
+# ─── ثبت هندلرهای ربات ─────────────────────────────────────────────────────────
+def register_handlers(app: Application) -> None:
+    # هندلرهای دستورات اصلی
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("buy", buy_cmd))
+    app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
+    app.add_handler(CommandHandler("ask", ask_cmd))
+    app.add_handler(CommandHandler("about_token", about_token))
+    app.add_handler(CommandHandler("lang", lang_cmd))
+    app.add_handler(CommandHandler("cases", cases_cmd))
+
+    # هندلر کلیک روی دکمه‌های اینلاین تأیید/رد رسید و نمایش پرونده‌ها
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"))
+    app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
+
+    # زبان‌ها
+    app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=0)
+
+    # هندلر دریافت رسید (عکس یا متن)
+    app.add_handler(
         MessageHandler(
             filters.PHOTO | (filters.TEXT & ~filters.COMMAND),
             handle_receipt
         ),
-        group=1,   # اول اجرا شود
+        group=1
     )
 
-    # هندلر عمومی بعد از آن
-        app.add_handler(
+    # سایر پیام‌های متنی (پایین‌ترین اولویت)
+    app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
-        group=2,
+        group=2
     )
+
+    # پیام‌های صوتی
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=3)
+
     
 # ─── محیط و تنظیمات جهانی ─────────────────────────────────────────────────────
 load_dotenv()  # متغیرهای محیطی را از .env می‌خواند
