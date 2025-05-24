@@ -882,6 +882,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=1)
     app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=2)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=3)
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
 
 # ─── نقطهٔ ورود اصلی ────────────────────────────────────────────────────────
