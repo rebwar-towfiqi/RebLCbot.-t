@@ -192,6 +192,9 @@ def init_db() -> None:
         USE_PG = False
         _setup_schema_sqlite()
 
+        _update_placeholder()  # تنظیم دقیق _PLACEHOLDER برای PostgreSQL یا SQLite
+
+
 def _setup_schema_pg() -> None:
     """ایجاد جدول بر روی PostgreSQL (اگر وجود نداشته باشد)."""
     ddl = """
