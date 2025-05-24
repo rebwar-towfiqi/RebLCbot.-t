@@ -42,6 +42,23 @@ from telegram.ext import (
     filters,
 )
 from telegram.ext import MessageHandler, filters
+
+def register_handlers(app: Application):
+    # … سایر هندلرها …
+        app.add_handler(
+        MessageHandler(
+            filters.PHOTO | (filters.TEXT & ~filters.COMMAND),
+            handle_receipt
+        ),
+        group=1,   # اول اجرا شود
+    )
+
+    # هندلر عمومی بعد از آن
+        app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
+        group=2,
+    )
+    
 # ─── محیط و تنظیمات جهانی ─────────────────────────────────────────────────────
 load_dotenv()  # متغیرهای محیطی را از .env می‌خواند
 
