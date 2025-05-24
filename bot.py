@@ -604,34 +604,40 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         action, uid_str = query.data.split(":")
         target_uid = int(uid_str)
     except (ValueError, AttributeError):
-        return  # دادهٔ نامعتبر
+        await query.answer("❌ دادهٔ دکمه نامعتبر است.", show_alert=True)
+        return
 
-    # محدودیت: فقط مدیر مجاز است
+    # بررسی دسترسی فقط برای ADMIN
     if update.effective_user.id != ADMIN_ID:
-        await query.answer("دسترسی شما محدود است.", show_alert=True)
+        await query.answer("⛔ فقط مدیر مجاز به انجام این عملیات است.", show_alert=True)
         return
 
     if action == "approve":
         save_subscription(target_uid, days=SUBS_DAYS)
         await context.bot.send_message(
             target_uid,
-            f"🎉 اشتراک شما تأیید شد و تا {SUBS_DAYS} روز فعال است. اکنون می‌توانید سؤال حقوقی بپرسید.",
+            f"🎉 اشتراک شما با موفقیت تأیید شد و به مدت {SUBS_DAYS} روز فعال است. اکنون می‌توانید سؤال حقوقی خود را ارسال کنید.",
         )
         status_note = "✔️ تأیید شد"
     else:  # reject
         set_user_status(target_uid, "rejected")
         await context.bot.send_message(
             target_uid,
-            "❌ رسید شما رد شد. لطفاً دوباره با رسید صحیح اقدام کنید.",
+            "❌ رسید شما رد شد. لطفاً با رسید معتبر مجدداً اقدام فرمایید.",
         )
         status_note = "❌ رد شد"
 
-    # ویرایش پیام مدیر برای ثبت نتیجه
-    new_text = (query.message.caption or query.message.text) + f"\n\nوضعیت: {status_note}"
-    if query.message.photo:
-        await query.message.edit_caption(new_text, parse_mode=ParseMode.HTML)
-    else:
-        await query.message.edit_text(new_text, parse_mode=ParseMode.HTML)
+    # ویرایش پیام اصلی مدیر
+    try:
+        original_text = query.message.caption or query.message.text or ""
+        updated_text = original_text + f"\n\n<b>وضعیت:</b> {status_note}"
+        if query.message.photo:
+            await query.message.edit_caption(updated_text, parse_mode=ParseMode.HTML)
+        else:
+            await query.message.edit_text(updated_text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.warning(f"خطا در ویرایش پیام مدیر: {e}")
+
 # ---------------------------------------------------------------------------#
 # 5. Command handlers & menu router                                          #
 # ---------------------------------------------------------------------------#
