@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """build_law_db.py – Convert Iranian law text files to SQLite & JSONL.
 
