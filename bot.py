@@ -976,7 +976,9 @@ def main():
     # ثبت هندلرها
     register_handlers(application)
 
-    # اجرای polling با دریافت همه نوع آپدیت
+ new_func(application)
+
+def new_func(application):
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
