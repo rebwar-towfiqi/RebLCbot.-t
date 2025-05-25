@@ -1,0 +1,34 @@
+def get_main_menu(lang: str):
+    menus = {
+        "fa": [
+            [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
+            [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("🎤 سؤال صوتی")],
+            [KeyboardButton("📚 پرونده‌های مشهور"), KeyboardButton("ℹ️ درباره توکن")],
+            [KeyboardButton("/lang")]
+        ],
+        "en": [
+            [KeyboardButton("🛒 Buy Subscription"), KeyboardButton("📤 Send Receipt")],
+            [KeyboardButton("⚖️ Legal Question"), KeyboardButton("🎤 Voice Question")],
+            [KeyboardButton("📚 Famous Cases"), KeyboardButton("ℹ️ About Token")],
+            [KeyboardButton("/lang")]
+        ],
+        "ku": [
+            [KeyboardButton("🛒 کڕینی بەشداریکردن"), KeyboardButton("📤 ناردنی پسوڵە")],
+            [KeyboardButton("⚖️ پرسیاری یاسایی"), KeyboardButton("🎤 پرسیاری دەنگی")],
+            [KeyboardButton("📚 پرۆسەی ناودار"), KeyboardButton("ℹ️ دەربارەی تۆکێن")],
+            [KeyboardButton("/lang")]
+        ]
+    }
+    return ReplyKeyboardMarkup(menus.get(lang, menus["fa"]), resize_keyboard=True)
+
+
+elif text == "📚 پرونده‌های مشهور":
+    await cases_cmd(update, context)
+
+
+
+elif text == "📚 Famous Cases":
+    await cases_cmd(update, context)
+
+elif text == "📚 پرۆسەی ناودار":
+    await cases_cmd(update, context)
