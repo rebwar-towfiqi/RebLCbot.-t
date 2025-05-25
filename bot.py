@@ -619,7 +619,16 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text("🎙️ تکایە پرسیاری یاساییەکەت وەکوو نامەی دەنگی بنێرە.\n\n📌 تەنها نامەی دەنگیی تەلەگرام پشتیوانی دەکرێت.")
         elif text == "ℹ️ دەربارەی تۆکێن":
             await about_token(update, context)
-    # If text doesn't match any known command or menu option, we could handle it (e.g., ask AI directly if subscribed).
+
+        elif text == "📚 پرونده‌های مشهور":
+            await cases_cmd(update, context)
+        elif text == "📚 Famous Cases":
+            await cases_cmd(update, context)
+
+        elif text == "📚 پرۆسەی ناودار":
+           await cases_cmd(update, context)
+
+# If text doesn't match any known command or menu option, we could handle it (e.g., ask AI directly if subscribed).
     # For now, do nothing or send a default message:
     # else:
     #     await update.message.reply_text("I'm not sure how to respond to that. Use /help for commands.")
