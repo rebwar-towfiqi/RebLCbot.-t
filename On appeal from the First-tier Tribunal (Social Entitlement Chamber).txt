@@ -1,0 +1,709 @@
+IN THE UPPER TRIBUNAL
+ADMINISTRATIVE APPEALS CHAMBER
+Appeal No. UA-2024-000689-PIP
+[2024] UKUT 339 (AAC)
+On appeal from the First-tier Tribunal (Social Entitlement Chamber)
+Between: QWH Appellant
+and
+The Secretary of State for Work and Pensions Respondent
+Before: Upper Tribunal Judge Perez
+Decision date: 27 October 2024
+Decided on consideration of the papers
+Representation:
+Appellant: David Beckett, Caseworker, Head of Welfare Benefits, Central 
+England Law Centre
+Respondent: L Ropel, Department for Work and Pensions
+DECISION
+1. Mrs QWH’s appeal is allowed.
+2. The First-tier Tribunal decision dated 19 October 2023 (heard under references
+SC015/23/00896 & 1691069695497500) is set aside so far as relating to the daily
+living component of personal independence payment. That part of the case is
+remitted to the Social Entitlement Chamber of the First-tier Tribunal, to be reheard in
+accordance with the directions at paragraph 58 of this decision.
+REASONS FOR DECISION
+Introduction
+3. The claimant, Mrs QWH, appeals to the Upper Tribunal with my permission
+dated 17 June 2024. That permission was given on the papers.
+1
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+Factual and procedural background
+Secretary of State’s decisions
+4. The claimant made a claim for both components of personal independence
+payment.
+5. The claimant was assessed on 17 April 2023 by a health care professional for
+the Secretary of State (page 15). The HCP recommended two points for needing an
+aid or appliance to be able to wash or bathe (descriptor 4b), two points for needing
+prompting to be able to engage with other people (descriptor 9b), and zero points for
+the other daily living activities. The HCP recommended zero points for mobility
+activity 1: planning and following journeys, and four points for mobility descriptor 2b:
+can stand and then move more than 50 metres but no more than 200 metres, either
+aided or unaided.
+6. The Secretary of State’s decision maker accepted that the claimant has:
+anxiety and depression, musculoskeletal problem – spine and lower limb, asthma
+and dyslexia.
+7. On 2 May 2023, the Secretary of State’s decision maker decided that the
+claimant was not entitled to an award of personal independence payment from 16
+February 2023 (pages 41 to 45). The decision maker awarded two points for needing
+an aid or appliance to be able to wash or bathe (descriptor 4b), and two points for
+needing to be prompted by another person to be able to engage with other people
+(descriptor 9b). Those four points did not suffice for a daily living award (regulation
+5(3) of the Social Security (Personal Independence Payment) Regulations 20131
+).
+The decision maker awarded four moving around points, for being able to stand and
+then move more than 50 metres but no more than 200 metres either aided or
+unaided, and no points for planning and following journeys. Those four mobility points
+were not enough for a mobility award (regulation 6(3)).
+8. On 6 July 2023, that decision was upheld on mandatory reconsideration.
+Appeal to the First-tier Tribunal
+9. The claimant appealed to the First-tier Tribunal. 
+10. The First-tier Tribunal allowed the appeal so far as relating to the mobility
+component. The First-tier Tribunal gave 10 points for planning and following journeys,
+under mobility descriptor 1d: cannot follow the route of an unfamiliar journey without
+another person, assistance dog or orientation aid. Those 10 mobility points were in
+addition to the four mobility points the Secretary of States’s decision maker had given,
+which the First-tier Tribunal upheld. So the First-tier Tribunal awarded the mobility
+component at the enhanced rate (regulation 6(3)(b)). The First-tier Tribunal confirmed
+the four daily living points the decision maker had given, and so confirmed that no daily
+living award was merited.
+11. The First-tier Tribunal said, among other things—
+1
+ S.I. 2013/377.
+2
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+ “9. A descriptor is satisfied if a claimant is able to perform it for more than 50% of
+the time.
+[…]
+13. As the claimant was awarded the highest possible rate of PIP for mobilising
+activities, there is nothing to be gained by setting out the reasons for the Tribunal’s
+decision in that respect. This statement will therefore focus on the claim for daily
+living activities.
+14. In her Notice of Appeal, the claimant challenged the DWP’s decision on
+activities 1 (preparing food), 2 (taking nutrition), 3 (managing therapy), 6 (dressing
+and undressing), 7 (verbal communication), 8 (reading and understanding), 9
+(engaging with people fact to face), and 10 (making budgeting decisions). She had
+already been awarded 2 points for activity 4 (washing and bathing), and a further 2
+points for activity 9. Activity 5 (toileting) was not an area of difficulty.
+[…]
+Findings of fact
+36. The claimant has anxiety and depression, but the functional impact is
+intermittent.
+37. This condition was managed by the claimant’s G.P.
+38. There had been no previous counselling or other secondary support, although
+a referral was now underway.
+39. Medication for anxiety and depression is not at maximum dosage.
+40. Functional limitations are variable, depending on the claimant’s then mood.
+41. In physical terms, the noted medical issues do not support claimed functional
+limitations, with the exception of activities 4 and 9. Reasons 42. The Tribunal had
+documents up to page 97.
+43. There are a number of preliminary observations to make at this stage.
+44. First, a descriptor applies if it reflects one’s ability for the majority of time.
+45. Second, this appeal is concerned with the functional impact of any claimed
+difficulties. By reference to the claim form, the only medical issues were anxiety
+and depression and asthma. The Tribunal noted later claims for other conditions,
+but as they were not included in the claim form (other than the torn ligament), the
+Tribunal concluded their functional impact was not such as to prompt the claimant
+to list them as live issues in her claim.
+46. Third, no medical evidence has been submitted by the claimant. The Tribunal
+found that surprising as it considered MRI scan reports would have been available
+and could have been submitted. As a consequence, this appeal may only be
+determined on the basis of the claim form for this benefit, the UC assessment
+report, and the PIP assessment report.
+47. In terms of anxiety and depression, the Tribunal accept the diagnosis, but not
+the claimed functional impact. It noted the claimant was on modest medication,
+although it also noted she had been prescribed citalopram shortly before her
+assessment, and her treatment may change depending on its effectiveness.
+3
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+48. We turn next to the specific tests.
+Preparing food
+49. The claimant noted that “I suffer with anxiety and depression some days I don’t
+feel like eating or feel like cooking food I have also got a torn ligament (left foot)
+which prevents me from standing”.
+50. The claimant is reminded that points may only be awarded if the functional
+difficulty exists for the majority of time. By itself, the use of the word ‘sometimes’
+suggests it is not for a majority of time, but in reaching its conclusion the Tribunal
+needs to be alive to the possibility that the claimant did not mean ‘sometimes’ in
+that context.
+51. The HP noted the claimant was able to “prepare her own meals, and was able
+to stand for the duration of time required” [40/19].
+52. The claimed inability to stand is inconsistent with what was reported to both the
+UC and HP assessors, and with an admitted ability to walk to a friend’s house, a
+local shop, the post office and a supermarket, and standing to take a shower.
+53. The Tribunal concludes the claimant had, for the majority of time, the physical
+and mental ability to prepare and cook a simple meal for one, and accordingly no
+points are scored.
+Taking nutrition
+54. In her claim form, the claimant confirmed she had no issue with eating or
+drinking [30/9]. Although the claimant noted in her appeal form that she would eat
+unhealthy snacks, the nutritional quality of what is consumed forms no part of this
+test. The Tribunal agrees with what was said in the claim form, and again no points
+are scored.
+[…]
+Reading and understanding
+61. In her claim form, the claimant identifies a struggle to read words in e.g. a
+letter, due to her dyslexia. It should be noted that complex language in this context
+is considered to be two or more sentences, or somewhat less that the average
+letter or bill. It is noted the claimant was diagnosed as dyslexic when at college,
+although no extra provision was made as a consequence. It is also noted the
+claimant had passed a driving test (including the theory test), and attained level 1
+in science, maths and English in addition to a qualification in travel and tourism
+40/19]. It is unfortunate the HP did not detail the qualification, but having regard to
+the limited threshold for this test, the Tribunal is satisfied no points are scored.
+Engaging with people
+62. In her claim form, the claimant noted her “extremely bad anxiety”, which is not
+consistent with her levels of medication. Further, she reported to the HP she had
+good and bad days, appeared to have no problems in using taxis, and walked to
+shops and her friend’s house. She accepted she could make small talk if
+necessary, even with people she had not previously met [40/19]. In her UC
+assessment, it was noted the claimant would speak with friends and family and did
+not like speaking to people she did not know [72/51].
+4
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+63. On the evidence available to it, the Tribunal concluded the claimant would need
+prompting to engage with people, but would not need social support. It agrees with
+the DWP and two points are scored for this activity
+[…]
+Summary
+68. The Tribunal accept the claimant has anxiety and depression, asthma, and
+suspected but unconfirmed musculo-skeletal issues in addition to a torn ligament. It
+does not accept the functional limitations arising from the medical conditions to be
+of such a degree as to score points in the daily living tests for this benefit, with the
+exception of activities 4 (washing and bathing) and 9 (engaging with people).
+69. The Tribunal accepts the mental health issue is somewhat fluid, with a trial of a
+low dosage of citalopram, and planned secondary support. The physical position is
+unclear as the outcome of MRI scans was not disclosed to the Tribunal, and there
+was no medical evidence put before it. It may be the case the position has changed
+since the date of decision, but that is not something this Tribunal is able to take into
+account. It is however open to the claimant to make a fresh claim for this benefit if
+she wishes.”.
+12. The claimant asked the First-tier Tribunal to set aside its decision. In a combined
+decision notice, the First-tier Tribunal refused to set aside its decision and refused
+permission to appeal to the Upper Tribunal. That decision notice was sent on 13 March
+2024. So the deadline under the rules for renewing the application to the Upper
+Tribunal was 13 April 2024.
+Late application to the Upper Tribunal for permission to appeal to the Upper Tribunal
+13. The claimant’s application to the Upper Tribunal for permission to appeal was
+received by the Upper Tribunal on 22 May 2024, one month and nine days late. I
+admitted it late. The representative explained (in the second version of the Reasons for
+Delay page of the UT1 form) that the First-tier Tribunal did not send the decision notice
+to the representative despite the representative having requested the set-aside. The
+representative said the claimant then made the decision notice available to the
+representative who then lost it for a time. Whether or not the representative had
+submitted the necessary form to go on the record with the First-tier Tribunal, I accepted
+that the claimant was the one to supply the First-tier Tribunal’s refusal of permission to
+the representative and that the representative then lost it for a time. I was satisfied that
+the one month and nine days’ delay would not prejudice the respondent, and I did not
+hold against the claimant her representative’s delay. It was for those reasons that I
+admitted the application late.
+Grounds of appeal to the Upper Tribunal
+14. The claimant advanced the following grounds for seeking permission to appeal to
+the Upper Tribunal, all relating to the daily living component—
+(1) Ground 1: Failure to give reasons for considering it not appropriate to
+adjourn for an oral or telephone hearing (despite the claimant not wanting
+to attend such a hearing).
+(2) Ground 2: Failure to take account of evidence submitted to the First-tier
+Tribunal on 9 November 2023 (which was after the appeal had on 19
+5
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+October 2023 been decided). The claimant’s representative told the
+Upper Tribunal that he had not seen the email. But he submitted that it
+was an error of law for the First-tier Tribunal not to take it into account
+because it could have been evidence of circumstances prevailing at the
+time of the decision.
+(3) Ground 3: Failure to make proper findings of fact in relation to activities
+1, 2, 5, 8 and 10, that is, as to whether the claimant was able to
+undertake the activities safely, to an acceptable standard, repeatedly,
+within a reasonable time period and on over 50% of the days. For
+example—
+(a) The First-tier Tribunal awarded zero points for activity 5 whereas
+the claimant was recorded as telling the HCP on page 19 that
+she used a raised toilet seat and grab rails, and that if she was
+not going anywhere she would wear lounge clothes – it was not
+clear that lounge wear amounted to clothing;
+(b) In relation to activity 1, the claimant had said in the claim form on
+page 9 that due to mental health some days she did not feel like
+eating or cooking, the HCP records at page 19 that the claimant
+can prepare her own meals but mum tends to do it. There are no
+findings as to whether the claimant did prepare/cook food on
+over 50% of the days, or whether for example she required
+prompting.
+Permission to appeal to the Upper Tribunal
+15. On 17 June 2024, I gave permission to appeal to the Upper Tribunal in relation to
+the daily living component. I found Ground 1 arguable and Ground 2 not arguable. I
+found Ground 3 arguable in respect of daily living activities 1, 2 and 8. I found an
+additional arguable error of law in relation to activity 6, as regards physical functioning.
+I added that arguable error to Ground 3.
+Ground 1
+16. The reasons for which I found Ground 1 arguable were not quite as framed in the
+permission application. I found it arguable that the failure to adjourn or postpone for
+oral evidence was itself an error of law. The failure to give further reasons for not
+adjourning would be immaterial if the failure to adjourn was itself not material. But,
+given the number of points on which the First-tier Tribunal needed to make further
+findings (see below), I said that arguably the First-tier Tribunal should have told the
+claimant that it needed to investigate them with her, and adjourned (or postponed) to
+allow for that opportunity. However, I found that it was also arguable that the First-tier
+Tribunal had what it needed and just did not go far enough. For this reason, and given
+the other arguable errors set out in my grant of permission, I did not include this
+arguable error in the errors which I asked the Secretary of State to agree to. I said
+however that, if she opposed the appeal, she would need to make a submission on this
+ground, as reframed by me, as well as on the other grounds on which permission was
+granted. The Secretary of State did not oppose the appeal and so did not need to
+make a submission on Ground 1.
+6
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+Ground 2
+17. The reasons for which I found Ground 2 not arguable were as follows. The
+evidence submitted to the First-tier Tribunal was submitted to it after the appeal had on
+19 October 2023 been determined, as the First-tier Tribunal pointed out. The failure to
+take it into account was not an error of law. The principle that evidence post-dating the
+decision can be taken into account if it evidences the circumstances obtaining at the
+date of the decision applies to the date of the Secretary of State’s decision (section
+12(8)(b) of the Social Security Act 1998). It does not apply where the evidence was
+supplied to the First-tier Tribunal after the First-tier Tribunal had made its decision. For
+such evidence to be taken into account and for permission to appeal to be given in
+relation to it, the evidence would need to satisfy the test in Ladd v Marshall [1954]
+EWCA Civ 1, [1954] 1 WLR 1489. There was nothing to suggest that the evidence
+submitted to the First-tier Tribunal on 9 November 2023 would satisfy that test. Indeed,
+the representative had not even seen that evidence. There was nothing to suggest that
+it was even material. As the First-tier Tribunal pointed out, functioning was what
+mattered. A diagnosis alone did not take the claimant’s case far enough.
+Ground 3: activities 1, 2, 6 and 8
+18. I found in granting permission that Ground 3 was arguable in respect of daily
+living activities 1, 2 and 8, for the reasons set out in paragraphs 34 to 54 of this
+decision. 
+19. In granting permission, I found too – which I added to Ground 3 – that there was
+an arguable error of law in relation to activity 6, as regards physical functioning.
+Ground 3 mentioned lounge clothes but did not specify their relevance, and activity 6
+was not expressly challenged in the grounds put to the Upper Tribunal. I found
+however in granting permission that it was arguable that the First-tier Tribunal had
+erred in failing adequately to consider and make a finding as to whether the claimant
+needs physical help to get dressed (she did not mention help getting undressed).
+20. Dressing and undressing were said in the claim form to be a problem due to
+mental functioning (page 10): “If im mentally in a bad was i wont want to wash or
+change my clothes i have to be told by my Mum”. It was not arguable that the First-tier
+Tribunal had erred in law in not finding that the claimant needs prompting to dress (or
+undress). The First-tier Tribunal relied, among other things, on the report of what the
+claimant had told the assessor in her Universal Credit assessment of 30 May 20232
+(six weeks after the 17 April 2023 PIP assessment3
+): “In her UC assessment, she was
+noted to say would get dressed into clean clothes without a need for prompting”. This
+was broadly correct; the UC assessor had said on page 50: “After a coffee she will go
+upstairs and get dressed in clean clothes, she will wear track suit. She is not prompted
+to do this, this is part of her routine”. Given that the UC assessment was done only six
+weeks after the PIP assessment, the First-tier Tribunal was entitled to take account of
+what the UC assessment had said.
+2
+ The UC assessment date is on page 46.
+3
+ The PIP assessment date is on page 15.
+7
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+21. But mental functioning was not the only issue claimed with dressing and
+undressing. In the Notice of Appeal to the First-tier Tribunal, dressing and undressing
+had been said to be a physical problem for which the claimant sat on the bed and had
+help from her brother or mother to put on her top or jeans (page 3). Sitting on the bed
+will not attract points for using the bed as an aid: CW v SSWP (PIP) [2016] UKUT 197
+(AAC) (Judge Edward Jacobs) and AP v SSWP (PIP) [2016] UKUT 501 (AAC) (Judge
+Kate Markus QC). But having help from her mother or brother to get dressed could
+indicate a need for such help (the claimant did not mention help with undressing). 
+22. I said in granting permission that, if the Secretary of State opposed the appeal,
+she must – in addition to addressing the other grounds on which permission was
+granted – make a submission as to whether there was an arguable error of law in
+relation to a need for physical help for activity 6. In the event, the Secretary of State
+has not needed to make such a submission.
+Ground 3: toilet needs (activity 5)
+23. I refused permission to appeal for Ground 3 so far as relating to toilet needs
+(activity 5). It was argued that the First-tier Tribunal had failed to make proper findings
+of fact, that is, as to whether the claimant was able to undertake activity 5 safely, to an
+acceptable standard, repeatedly, within a reasonable time period and on over 50% of
+the days. The grounds pointed out that “the claimant is recorded as telling the HCP on
+page 19 that she used a raised toilet seat and grab rails”. In her claim form, the
+claimant had answered “No” to the question “Does your condition affect you using the
+toilet or managing incontinence?” (page 10). The First-tier Tribunal listed at paragraph
+14 the activities that had been raised in the Notice of Appeal, and correctly excluded
+from that list toilet needs. The First-tier Tribunal also recorded that “Activity 5 (toileting)
+was not an area of difficulty”.
+24. That the claimant did not raise toilet needs in her First-tier Tribunal appeal did not
+however mean, of itself, that the issue of toilet needs was not raised by the appeal
+(section 12(8)(a) of the Social Security Act 1998).
+25. But I refused permission to appeal for toilet needs because I found that it was
+open to the First-tier Tribunal not to find that toilet needs were an issue raised by the
+appeal. The only evidence relied on as having raised toilet needs as an issue was what
+the HCP had said on page 19. But the grounds do not go far enough in citing what the
+HCP had said on page 19. She had said—
+ “She is able to get on/off the toilet and manage her toilet hygiene, there is a raised
+toilet seat for another family member that she uses, she also uses the grab rails
+that are there, she is unsure if she could manage without these there”.
+26. So the evidence was that the raised toilet seat was for another family member.
+And there was no suggestion that the grab rails had been placed for the claimant.
+Neither point necessarily meant that the claimant did not need them, however. But the
+claimant had not said anywhere in the evidence that she needed them, and had not
+said that toilet needs were an issue at all. I found that it was open to the First-tier
+Tribunal not to take the claimant’s statement to the HCP that “she is unsure if she
+8
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+could manage without these there” as evidence that she needed the grab rails and
+raised seat.
+27. And so I found that Ground 3 was not arguable so far as relating to toilet needs.
+This does not however mean that the claimant cannot ask for toilet needs to be
+considered afresh on remittal.
+Ground 3: budgeting (activity 10)
+28. I also refused permission to appeal for Ground 3 so far as relating to budgeting
+(activity 10). I found that it was open to the First-tier Tribunal, for the reasons it gave at
+paragraphs 64 to 67 of the statement of reasons, to award no points for this activity.
+But this does not prevent the claimant from raising budgeting in the remitted appeal.
+29. In granting permission to appeal, I invited the parties to agree only to the errors of
+law I had found arguable for Ground 3 so far as relating to daily living activities 1, 2 and
+8. But I said a submission on all grounds I had found arguable would be needed from
+the Secretary of State if she opposed the appeal, which in the event she did not.
+Submissions
+30. The parties have both agreed: to the Upper Tribunal finding that there were
+the errors of law set out at paragraphs 34 to 54 of this decision; to the daily living
+component part of the First-tier Tribunal’s decision being set aside for the reasons in
+those paragraphs; and to the Upper Tribunal referring the daily living component part of
+the case for redetermination entirely afresh by the First-tier Tribunal.
+Law
+31. Provision as to personal independence payment is made by sections 77 to 95 of
+the Welfare Reform Act 2012, and by the Social Security (Personal Independence
+Payment) Regulations 2013 (S.I. 2013/377).
+32. At the relevant time, regulation 4 of the Social Security (Personal Independence
+Payment) Regulations 2013 provided—
+ “4.—(1) For the purposes of section 77(2) and section 78 or 79, as the case may
+be, of the Act, whether C has limited or severely limited ability to carry out daily
+living or mobility activities, as a result of C's physical or mental condition, is to be
+determined on the basis of an assessment.
+(2) C's ability to carry out an activity is to be assessed –
+(a) on the basis of C's ability whilst wearing or using any aid or
+appliance which C normally wears or uses; or
+(b) as if C were wearing or using any aid or appliance which C could
+reasonably be expected to wear or use.
+(2A) Where C’s ability to carry out an activity is assessed, C is to be assessed as
+satisfying a descriptor only if C can do so—
+(a) safely;
+9
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+(b) to an acceptable standard;
+(c) repeatedly; and
+(d) within a reasonable time period.
+(3) Where C has been assessed as having severely limited ability to carry out
+activities, C is not to be treated as also having limited ability in relation to the
+same activities.
+(4) In this regulation—
+(a) “safely” means in a manner unlikely to cause harm to C or to
+another person, either during or after completion of the activity;
+(b) “repeatedly” means as often as the activity being assessed is
+reasonably required to be completed; and
+(c) “reasonable time period” means no more than twice as long as the
+maximum period that a person without a physical or mental condition
+which limits that person’s ability to carry out the activity in question
+would normally take to complete that activity.”.
+33. Regulation 7 of the Social Security (Personal Independence Payment)
+Regulations 2013 provided, at the relevant time—
+ “Scoring: further provision
+7.—(1) The descriptor which applies to C in relation to each activity in the tables
+referred to in regulations 5 and 6 is—
+(a) where one descriptor is satisfied on over 50% of the days of the
+required period, that descriptor;
+(b) where two or more descriptors are each satisfied on over 50% of the
+days of the required period, the descriptor which scores the higher or
+highest number of points; and
+(c) where no descriptor is satisfied on over 50% of the days of the
+required period but two or more descriptors (other than a descriptor
+which scores 0 points) are satisfied for periods which, when added
+together, amount to over 50% of the days of the required period–
+(i) the descriptor which is satisfied for the greater or greatest
+proportion of days of the required period; or,
+(ii) where both or all descriptors are satisfied for the same
+proportion, the descriptor which scores the higher or highest
+number of points.
+(2) For the purposes of paragraph (1), a descriptor is satisfied on a day in the
+required period if it is likely that, if C had been assessed on that day, C would
+have satisfied that descriptor.
+(3) In paragraphs (1) and (2), “required period” means—
+10
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+(a) in the case where entitlement to personal independence payment
+falls to be determined, the period of 3 months ending with the prescribed
+date together with—
+(i) in relation to a claim after an interval for the purpose of
+regulation 15 or 15A, the period of 9 months beginning with the
+date on which that claim is made;
+(ii) in relation to any other claim, the period of 9 months
+beginning with the day after the prescribed date.
+(b) in the case where personal independence payment has been
+awarded to C—
+(i) during the period of 3 months following a determination of
+entitlement under a claim for the purpose of regulation 15 or
+15A, the period of 3 months ending with the prescribed date
+together with, for each day of the award, the period of 9 months
+beginning with the day after that date;
+(ii) in any other case, for each day of the award, the period of 3
+months ending with that date together with the period of 9
+months beginning with the day after that date.”.
+Analysis
+Errors of law
+34. The First-tier Tribunal erred in law in relation to daily living activities 1, 2 and 8,
+as follows.
+Activity 1: Preparing food
+35. The First-tier Tribunal erred in law—
+(i) in failing adequately to consider and make a finding as to whether the
+claimant needs prompting to be able to prepare or cook a simple meal;
+(ii) in adopting the HCP’s flawed findings as to preparing food;
+(iii) in failing adequately to explain why the First-tier Tribunal found that the
+claimant had “for the majority of time, the … mental ability to prepare
+and cook a simple meal for one”;
+(iv) in failing to make findings as to whether the claimant can prepare and
+cook a simple meal unaided repeatedly, to an acceptable standard and
+within a reasonable time period; and
+(v) in applying the wrong test and failing to make findings as to whether the
+claimant can do as mentioned in subparagraph (iv) above on over 50%
+of the days (rather than “for the/a majority of the time” and "for more than
+50% of the time”).
+11
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+I take each of those points in turn.
+(i) Failure adequately to consider and make a finding as to whether the claimant needs
+prompting to be able to prepare or cook a simple meal
+36. As the claimant’s representative points out, the claim form had said “I suffer
+with anxiety and depression some days i dont feel like eating or feel like cooking food”
+(page 9, my underlining). This evidence of a lack of motivation raised an issue as to
+whether there was a need for at least prompting to prepare food.
+37. Moreover, the claimant had said in her Notice of Appeal to the First-tier Tribunal
+(pages 3 and 4)—
+ “I do not cook meals for myself. I don't really think about eating due to my mental
+health, depression, and anxiety. It's usually my mother who cooks for me. She
+reminds me about meals, as I tend to forget about meals, and think the day is too
+short. I do not have energy to think about it. If my mother woldn't [sic] cook or
+woyuldnt [sic] remind me to eat I wouldnt [sic] eat at all, or eat things like crisps I do
+not prepare meals for myself primarily because I often neglect or forget to eat due
+to my mental health struggles with depression and anxiety. Thankfully, my mother
+takes on the responsibility of cooking for me. She not only prepares meals but also
+reminds me to eat, as I frequently overlook the importance of regular meals and
+feel that time passes by too quickly.
+My lack of energy and motivation further contribute to my inability to prioritize
+eating. Without my mother's involvement, I would likely go without meals or rely on
+unhealthy snacks like crisps for days.”.
+38. In saying that her mother “reminds me about meals”, the claimant seemed to
+include preparing meals, rather than just eating. So this was specific evidence that the
+claimant receives prompting to prepare meals. Receiving it does not means she needs
+it of course, but it can be evidence of a need.
+39. The HCP’s report that “She can prepare her own meals, but mum tends to do
+this” on page 19 did not contradict the claimed lack of motivation in the claim form, or
+the needs suggested by the Notice of Appeal. The HCP did not go so far as to say
+whether the claimant could prepare meals unprompted. Moreover, the First-tier
+Tribunal had awarded 10 points for mobility descriptor 1d because of the claimant’s
+mental ill-health.
+(ii) Adopting the HCP’s flawed findings
+40. The HCP dealt with the claimed lack of motivation as follows (pages 19 and 26)—
+ “She can prepare her own meals, but mum tends to do this as she enjoys it, She
+can do this if she needs to and is able to stand for duration of preparing a meal.
+She only had 1 meal yesterday, sometimes she needs encouragement to eat/drink
+water. She tends to just drink coffee. She thinks this is due to pain from her wisdom
+teeth and it is painful to eat. Yesterday when she did eat, she reports it caused pain
+and a chipped tooth due to the wisdom teeth so she tends to avoid eating. She also
+can tend to comfort eat and eat junk food to feel better. No reported weight loss in
+the last 12 months. Does not need encouragement throughout eating a meal.”
+(page 19)
+12
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+ “Although CQ reports low motivation in activity 1 and stress affecting activity 2, SOH
+reports she is able to prepare meals as needed but allows her mum to do so as
+she enjoys to. She is avoiding eating due to wisdom tooth pain, and therefore will
+make herself coffees instead. No physical restrictions that would impact ability to
+prepare a meal, she would be able to stand for the duration of preparing a meal.
+HOC reports previous weight loss however is now able to maintain this, no
+specialist input or recent weight loss reported. Although CQ does report low
+motivation this is not consistent or evidenced throughout the assessment, based on
+the available evidence 1A, 2A are likely” (page 26).
+41. The HCP repeated that the claimant had told her that “She can prepare her own
+meals”. But being “able” to prepare her own meals did not mean the claimant did not
+need prompting to be able to do so. The HCP does not however appear, from the
+passages set out at paragraph 40 above, to have investigated that. In this respect, the
+HCP’s finding as to activity 1 was flawed in that it did not go far enough. In accepting
+the HCP’s finding that the claimant can prepare her own meals, the First-tier Tribunal
+adopted that flaw.
+(iii) Failure adequately to explain why the First-tier Tribunal found that the claimant
+had “for the majority of time, the…mental ability to prepare and cook a simple meal for
+one”
+42. The First-tier Tribunal erred in law in failing adequately to explain why it found
+that the claimant had “for the majority of time, the … mental ability to prepare and cook
+a simple meal for one”. This did go further than simply finding that the claimant can
+prepare her own meals; it addressed mental ability and not just physical ability. But
+what the First-tier Tribunal said in the rest of its statement of reasons did not explain
+why the claimant’s mental ability was up to the task and why there was no need for
+prompting.
+43. This is what the First-tier Tribunal said in the rest of its statement of reasons,
+about mental health and functioning (paragraphs 36 to 40, 47 and 50)—
+ “The claimant has anxiety and depression, but the functional impact is intermittent”;
+ “This condition was managed by the claimant’s G.P”;
+ “There had been no previous counselling or other secondary support, although a
+referral was now underway”;
+ “Medication for anxiety and depression is not at maximum dosage”, “Functional
+limitations are variable, depending on the claimant’s then mood”;
+ “the claimant was on modest medication, although it also noted she had been
+prescribed citalopram shortly before her assessment, and her treatment may
+change depending on its effectiveness”; and
+In relation to the evidence that “I suffer with anxiety and depression some days I
+don’t … feel like cooking food”, the tribunal observed that “By itself, the use of the
+word ‘sometimes’ suggests it is not for a majority of time, but in reaching its
+13
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+conclusion the Tribunal needs to be alive to the possibility that the claimant did not
+mean ‘sometimes’ in that context”. 
+44. It was in the claimant’s favour that the First-tier Tribunal did not find the reference
+to “sometimes” cited by the HCP, or “some days” stated in the claim form, to mean that
+“on over 50% of the days” was not met (or that “for a majority of the time” was not met,
+to which I return below). But it was still not apparent whether the First-tier Tribunal
+accepted the lack of motivation and a need for prompting, but did not accept that it was
+there on over 50% of the days (albeit not based on “sometimes” or “some days”), or
+whether the tribunal did not accept that there was a lack of motivation and a need for
+prompting at all for preparing food. The finding that functional Impact was intermittent
+did not go far enough.
+45. If the First-tier Tribunal’s findings were construed as meaning there was no need
+for prompting at all for preparing food, it is not apparent why that was, given the
+following points—
+(1) First, a need for prompting had been put in issue by the claimed lack of
+motivation on page 9 and the reference to being reminded in the Notice of
+Appeal to the First-tier Tribunal.
+(2) Second, the claimed lack of motivation was not contradicted by the HCP’s
+report that the claimant can prepare her own meals, as I have said above.
+(3) Third, such a need is readily conceivable in a case of depression and
+anxiety, especially when the activity is considered, as it should have been,
+by reference to “repeatedly”, “to an acceptable standard”, and “within a
+reasonable time period” (“safely” was probably not relevant to prompting).
+(4) Fourth, the First-tier Tribunal had been sufficiently persuaded of the
+adverse effects of the claimant’s mental ill-health to award 10 points for
+planning and following journeys. That high planning and following journeys
+score indicates a mental health issue that could have had more of an effect
+on daily living than the First-tier Tribunal found. The First-tier Tribunal said
+at paragraph 13: “As the claimant was awarded the highest possible rate of
+PIP for mobilising activities, there is nothing to be gained by setting out the
+reasons for the Tribunal’s decision in that respect. This statement will
+therefore focus on the claim for daily living activities”. While there might
+indeed not have been anything to be gained in terms of avoiding an error of
+law for mobility descriptor 1d, the reasons for awarding mobility descriptor
+1d were potentially relevant to the daily living activities too. It is not apparent
+whether the First-tier Tribunal accepted that the need to be accompanied
+was due to the claimed fear of falling, or whether it was due to anxiety more
+generally. The HCP had reported on page 19 that “She doesnt go out
+anywhere else, unless her mother needs help with food shopping, she
+would then ask her brother to go with her due to anxiety about falling”
+(although the HCP went on to consider mobility descriptor 1 not due to fear
+of falling but due to the mental health conditions: page 37). If the First-tier
+Tribunal awarded the 10 mobility points due only to the fear of falling, the
+mobility descriptor 1d reasoning was less relevant to a need for prompting
+in daily living activities. But without the First-tier Tribunal’s explanation, we
+do not know which it was.
+14
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+(iv) Failure to make findings as to repeatedly, to an acceptable standard and within a
+reasonable time period
+46. Given what I say at paragraph 45 above, it was a material error of law for the
+First-tier Tribunal to fail to make findings as to whether the claimant could prepare food
+unaided repeatedly, to an acceptable standard and within a reasonable time period.
+(v) Application of the wrong test and failure to make findings as to whether the
+claimant can do so on over 50% of the days (rather than “for more than 50% of the
+time” or “for the/a majority of the time”)
+47. The First-tier Tribunal materially erred in law in misciting the test in regulation 7
+and in applying the wrong test. The test is not “for more than 50% of the time” (as the
+First-tier Tribunal said at paragraph 13), or “for the majority of the time” (as the tribunal
+said at paragraph 44), or “for a majority of the time” (as the tribunal said at paragraph
+50). It is “on over 50% of the days of the required period”. While some First-tier
+Tribunal panels do sometimes miscite regulation 7 in this way (a hangover from
+previous legislation), it is not always a material miscitation. Here, however, it appears
+that the First-tier Tribunal’s application of “for more than 50% of the time” and of “for
+the/a majority of the time” could well have led it to reject any needs for activity 1 by
+imposing too high a bar: “on” a day is a lower test; it can be satisfied even if the
+descriptor is satisfied for less (indeed much less) than 51% of the day.
+Activity 2: Taking nutrition
+48. The First-tier Tribunal erred in law in relation to taking nutrition. 
+49. First, the First-tier Tribunal miscited the evidence.
+50. The First-tier Tribunal said—
+ “Other inconsistencies are apparent in the papers. For example, the claimant denies
+any issue with eating or drinking, but includes this as an issue in her appeal”
+(paragraph 19) and 
+ “In her claim form, the claimant confirmed she had no issue with eating or drinking
+… The Tribunal agrees with what was said in the claim form, and again no points
+are scored” (paragraph 54).
+51. It was not correct to say that the claimant had confirmed in her claim form that
+she had no issue with eating and drinking nor to say that it was an inconsistency to
+include it as an issue in her appeal. It is true that she had in the claim form put “No” to
+the question “Does your condition affect you eating and drinking?”. But she had said
+otherwise in answering the questions immediately above that one (page 9, my
+emphasis)—
+ “Does your condition affect you preparing food, or ever prevent you from doing so? 
+Yes 
+Tell us about the difficulties you have with preparing food and how you manage
+them 
+15
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+I suffer with anxiety and depression some days i dont feel like eating or feel like
+cooking food i have also got a torn ligament (left foot ) which prevents me from
+standing”.
+52. The claimant had reported to the HCP: “She only had 1 meal yesterday,
+sometimes she needs encouragement to eat/drink water” (page 19). The HCP did go
+on to say that “She tends to just drink coffee. She thinks this is due to pain from her
+wisdom teeth and it is painful to eat”. But the First-tier Tribunal needed to consider
+whether that undermined the claim made in the claim form and in the appeal that the
+lack of motivation to eat was due to anxiety and depression as stated on page 9 (“due
+to” was not used, but that was the result of how they were linked in the sentence: “I
+suffer with anxiety and depression some days i dont feel like eating”).
+53. Second, motivation to eat having been put in issue, the First-tier Tribunal also
+erred in law: (i) in failing adequately to consider and make a finding as to whether the
+claimant needs prompting to be able to take nutrition; (ii) in failing to make findings as
+to whether the claimant can prepare and cook a simple meal unaided repeatedly, to an
+acceptable standard and within a reasonable time period; and (iii) in applying the
+wrong test and failing to make findings as to whether the claimant can do so on over
+50% of the days (rather than “for the/a majority of the time” and "for more than 50% of
+the time”).
+Activity 8: Reading and understanding signs, symbols and words
+54. The First-tier Tribunal erred in law in failing to make a finding as to whether the
+claimant needed an aid or appliance due to her dyslexia (which diagnosis, albeit by the
+college, the First-tier Tribunal seemed not to doubt). That the claimant did not mention
+using, for example, coloured overlays, did not mean she does not need them.
+Ground 1 and dressing and undressing
+55. I need not, and do not, make a finding as to whether the First-tier Tribunal erred
+in law as set out in Ground 1 of my grant of permission or in relation to dressing and
+undressing. The errors of law identified at paragraphs 34 to 54 above suffice – as the
+parties agree – to set aside and remit. The First-tier Tribunal will no doubt however
+take note of what I say about Ground 1, and dressing and undressing, at paragraphs
+16, 19 and 21 above.
+Disposal
+56. Both parties agreed to remittal of the entire daily living component. I consider
+remittal appropriate for findings of fact to be made afresh in relation to all activities in
+the daily living component.
+Conclusion
+57. It is for the reasons at paragraphs 34 to 54 above that I allow the appeal so far
+as relating to the daily living component part of the First-tier Tribunal’s decision and so
+set aside that part of the decision. It is for the reasons at paragraph 56 above that I
+remit the daily living component part of the case to a freshly-constituted panel of the
+First-tier Tribunal, for redetermination entirely afresh.
+16
+QWH v Secretary of State for Work and Pensions Case no: UA-2024-000689-PIP
+ [2024] UKUT 339 (AAC)
+CASE MANAGEMENT DIRECTIONS
+58. I therefore direct as follows—
+(1) The daily living component part of the case is to be redetermined entirely
+afresh by the First-tier Tribunal.
+(2) The First-tier Tribunal panel which rehears the daily living component part
+of the case must contain no-one who was on the panel which decided the
+case on 19 October 2023.
+Rachel Perez
+Judge of the Upper Tribunal
+27 October 2024
+17
