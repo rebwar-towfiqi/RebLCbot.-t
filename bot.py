@@ -971,16 +971,19 @@ def register_handlers(app: Application) -> None:
 
 def main():
     # دریافت توکن از .env
-   
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise ValueError("❌ BOT_TOKEN در فایل .env یافت نشد.")
+    
+    init_db()  # ✅ جدول‌ها را می‌سازد
 
     # ساخت اپلیکیشن تلگرام
     application = Application.builder().token(bot_token).build()
 
     # ثبت هندلرها
     register_handlers(application)
+
+    logger.info("🤖 RebLawBot started. Waiting for updates...")
 
     # اجرای polling با دریافت همه نوع آپدیت
     application.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -990,6 +993,4 @@ def main():
 # ❗ این خط باید خارج از تابع باشد
 if __name__ == "__main__":
     main()
-
-
-logger.info("🤖 RebLawBot started. Waiting for updates...")
+    
