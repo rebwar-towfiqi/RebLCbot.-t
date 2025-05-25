@@ -53,26 +53,29 @@ def voice_to_text(file_path: str) -> str:
     return result["text"]
 
 # ─── Bot Menus and Language Helper ──────────────────────────────────────────
-def get_main_menu(lang: str) -> ReplyKeyboardMarkup:
-    """Return main menu keyboard based on user language."""
+def get_main_menu(lang: str):
     menus = {
         "fa": [
             [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
             [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("🎤 سؤال صوتی")],
-            [KeyboardButton("ℹ️ درباره توکن"), KeyboardButton("/lang")]
+            [KeyboardButton("📚 پرونده‌های مشهور"), KeyboardButton("ℹ️ درباره توکن")],
+            [KeyboardButton("/lang")]
         ],
         "en": [
             [KeyboardButton("🛒 Buy Subscription"), KeyboardButton("📤 Send Receipt")],
             [KeyboardButton("⚖️ Legal Question"), KeyboardButton("🎤 Voice Question")],
-            [KeyboardButton("ℹ️ About Token"), KeyboardButton("/lang")]
+            [KeyboardButton("📚 Famous Cases"), KeyboardButton("ℹ️ About Token")],
+            [KeyboardButton("/lang")]
         ],
         "ku": [
             [KeyboardButton("🛒 کڕینی بەشداریکردن"), KeyboardButton("📤 ناردنی پسوڵە")],
             [KeyboardButton("⚖️ پرسیاری یاسایی"), KeyboardButton("🎤 پرسیاری دەنگی")],
-            [KeyboardButton("ℹ️ دەربارەی تۆکێن"), KeyboardButton("/lang")]
+            [KeyboardButton("📚 پرۆسەی ناودار"), KeyboardButton("ℹ️ دەربارەی تۆکێن")],
+            [KeyboardButton("/lang")]
         ]
     }
     return ReplyKeyboardMarkup(menus.get(lang, menus["fa"]), resize_keyboard=True)
+
 
 
 
