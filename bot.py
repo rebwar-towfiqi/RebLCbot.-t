@@ -7,7 +7,7 @@ Version 2025-05-24 – Stable Edition
 
 from __future__ import annotations
 
-# ─── استانداردهای پایتون ───────────────────────────────────────────────────────
+
 import asyncio
 import logging
 import os
@@ -19,90 +19,42 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, Optional
 
-# ─── ماژول‌های وابسته به صدا ───────────────────────────────────────────────────
-import whisper
-import ffmpeg
-
-# ─── کتابخانه‌های خارجی ───────────────────────────────────────────────────────
+# External libraries
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
 from psycopg2.pool import SimpleConnectionPool
-from telegram import (
-    Update, Message, InlineKeyboardButton, InlineKeyboardMarkup,
-    ReplyKeyboardMarkup, KeyboardButton
-)
+from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ChatAction, ParseMode
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    ContextTypes, MessageHandler, filters
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-# ─── ماژول‌های داخلی ───────────────────────────────────────────────────────────
-from texts import TEXTS
+from texts import TEXTS  # assuming texts.py provides translation strings
 
-# ─── ثبت هندلرهای ربات ─────────────────────────────────────────────────────────
-def register_handlers(app: Application) -> None:
-    # هندلرهای دستورات اصلی
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("buy", buy_cmd))
-    app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
-    app.add_handler(CommandHandler("status", status_cmd))
-    app.add_handler(CommandHandler("ask", ask_cmd))
-    app.add_handler(CommandHandler("about_token", about_token))
-    app.add_handler(CommandHandler("lang", lang_cmd))
-    app.add_handler(CommandHandler("cases", cases_cmd))
-
-    # هندلر کلیک روی دکمه‌های اینلاین تأیید/رد رسید و نمایش پرونده‌ها
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"))
-    app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
-
-    # زبان‌ها
-    app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=0)
-
-    # هندلر دریافت رسید (عکس یا متن)
-    app.add_handler(
-        MessageHandler(
-            filters.PHOTO | (filters.TEXT & ~filters.COMMAND),
-            handle_receipt
-        ),
-        group=1
-    )
-
-    # سایر پیام‌های متنی (پایین‌ترین اولویت)
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, text_router),
-        group=2
-    )
-
-    # پیام‌های صوتی
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=3)
-
-# ─── محیط و تنظیمات جهانی ─────────────────────────────────────────────────────
-load_dotenv()  # متغیرهای محیطی را از .env می‌خواند
-
+# ─── Global Environment and Logging ──────────────────────────────────────────
+load_dotenv()  # Load environment variables from .env
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     level=logging.DEBUG,
 )
 logger = logging.getLogger("RebLawBot")
 
-# کلاینت غیرهمزمان OpenAI؛ تمام فراخوانی‌ها از همین نمونه استفاده می‌کنند
+# Async OpenAI client (for answering questions)
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# ---------------------------------------------------------------------------#
-# 0. Utilities                                                               #
-# ---------------------------------------------------------------------------#
-# بارگذاری مدل فقط یک‌بار در ابتدای اجرا
+# ─── Utility: Voice to Text (Whisper model) ─────────────────────────────────
+import whisper
+import ffmpeg  # ensure ffmpeg is installed in environment
 whisper_model = whisper.load_model("base")
 
 def voice_to_text(file_path: str) -> str:
-    """تبدیل فایل صوتی به متن با استفاده از Whisper"""
+    """Convert an audio file to text using OpenAI Whisper."""
     result = whisper_model.transcribe(file_path)
     return result["text"]
 
-def get_main_menu(lang: str):
+# ─── Bot Menus and Language Helper ──────────────────────────────────────────
+def get_main_menu(lang: str) -> ReplyKeyboardMarkup:
+    """Return main menu keyboard based on user language."""
     menus = {
         "fa": [
             [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
@@ -125,84 +77,63 @@ def get_main_menu(lang: str):
 
 
 def tr(key: str, lang: str = "fa", **kwargs) -> str:
- 
-
-    """دریافت متن ترجمه‌شده بر اساس کلید و زبان کاربر"""
- 
-   
-    base = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
-    return base.format(**kwargs)
+    """Translate text by key for the given language (fallback to Persian)."""
+    base_text = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
+    return base_text.format(**kwargs)
 
 def getenv_or_die(key: str) -> str:
-    """
-    برمی‌گرداند مقدار متغیر محیطی *key*؛
-    اگر وجود نداشته باشد، خطای RuntimeError می‌دهد.
-
-    برای متغیرهای ضروری مانند BOT_TOKEN، POSTGRES_URL یا OPENAI_API_KEY
-    از این تابع استفاده کنید تا در صورت پیکربندی ناقص،
-    ربات به‌صراحت اخطار دهد و متوقف شود.
-    """
+    """Get an environment variable or raise an error if it's missing."""
     value = os.getenv(key)
     if not value:
         raise RuntimeError(f"Environment variable {key!r} is missing")
     return value
 
-def get_lang(context):
+def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Retrieve or initialize the user's language (defaults to 'fa')."""
     lang = context.user_data.get("lang")
     if lang not in ("fa", "en", "ku"):
         lang = "fa"
         context.user_data["lang"] = lang
     return lang
 
-
-# ---------------------------------------------------------------------------#
-# 1. Database layer – PostgreSQL → SQLite fallback                           #
-# ---------------------------------------------------------------------------#
-import threading
-
-# فایل لوکال SQLite (اگر PostgreSQL در دسترس نبود)
+# ─── Database Setup (PostgreSQL with SQLite fallback) ───────────────────────
 SQLITE_FILE = Path("users.db")
 POOL: Optional[SimpleConnectionPool] = None
-USE_PG = False                        # پس از init_db مشخص می‌شود
-_sqlite_lock = threading.RLock()      # برای ایمنی رشته‌ای روی SQLite
+USE_PG = False  # Will be set to True if PostgreSQL is available
+_sqlite_lock = asyncio.Lock()  # using asyncio Lock for async context if needed
 
 def init_db() -> None:
     """
-    تلاش می‌کند به PostgreSQL متصل شود؛ در صورت شکست،
-    SQLite را به‌عنوان جایگزین برمی‌گزیند. باید یک بار در startup اجرا شود.
+    Initialize the database connection.
+    Tries PostgreSQL (if POSTGRES_URL is set and reachable), otherwise uses SQLite.
+    Creates the necessary tables if they don't exist.
     """
     global POOL, USE_PG
-
+   
     try:
-        pg_url = os.getenv("POSTGRES_URL")  # شکل کامل: postgres://user:pass@host:port/db
+        pg_url = os.getenv("POSTGRES_URL")  # e.g., postgres://user:pass@host:port/db
         if not pg_url:
             raise ValueError("POSTGRES_URL not set")
-
-        POOL = SimpleConnectionPool(
-            minconn=1,
-            maxconn=5,
-            dsn=pg_url,
-            connect_timeout=10,
-            sslmode="require",
-        )
-        # تست سادهٔ اتصال
+        # Attempt PostgreSQL connection pool
+        POOL = SimpleConnectionPool(minconn=1, maxconn=5, dsn=pg_url, connect_timeout=10, sslmode="require")
+        # Simple test query to verify connection
         with POOL.getconn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1;")
         USE_PG = True
         logger.info("✅ Connected to PostgreSQL")
         _setup_schema_pg()
-
+   
     except Exception as exc:
+        # Fallback to SQLite if PostgreSQL fails
         logger.warning("PostgreSQL unavailable (%s), switching to SQLite.", exc)
         USE_PG = False
         _setup_schema_sqlite()
-
-        _update_placeholder()  # تنظیم دقیق _PLACEHOLDER برای PostgreSQL یا SQLite
-        
+    # Update placeholder after determining DB type
+    _update_placeholder()
 
 def _setup_schema_pg() -> None:
-    """ایجاد جدول بر روی PostgreSQL (اگر وجود نداشته باشد)."""
+    """Create tables in PostgreSQL if they don't exist."""
     ddl = """
     CREATE TABLE IF NOT EXISTS users (
         user_id          BIGINT PRIMARY KEY,
@@ -221,13 +152,14 @@ def _setup_schema_pg() -> None:
         asked_at   TIMESTAMP DEFAULT NOW()
     );
     """
+    assert POOL is not None  # pool should be set if USE_PG is True
     with POOL.getconn() as conn:
         with conn.cursor() as cur:
             cur.execute(ddl)
         conn.commit()
 
 def _setup_schema_sqlite() -> None:
-    """ایجاد جدول بر روی SQLite (اگر وجود نداشته باشد)."""
+    """Create tables in SQLite if they don't exist."""
     SQLITE_FILE.touch(exist_ok=True)
     ddl = """
     CREATE TABLE IF NOT EXISTS users (
@@ -247,169 +179,147 @@ def _setup_schema_sqlite() -> None:
         asked_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """
-    with _sqlite_lock, sqlite3.connect(SQLITE_FILE) as conn:
+    # Acquire a lock to ensure thread-safety if accessed from multiple threads
+    with sqlite3.connect(SQLITE_FILE) as conn:
         conn.executescript(ddl)
         conn.commit()
 
+_PLACEHOLDER = "?"  # Will use SQLite placeholder by default
+
+def _update_placeholder() -> None:
+    """Update the SQL placeholder based on which DB is in use. Call after init_db()."""
+    global _PLACEHOLDER
+    _PLACEHOLDER = "%s" if USE_PG else "?"
+
 @contextmanager
-def get_db() -> Generator[sqlite3.Connection | "psycopg2.extensions.connection", None, None]:
+def get_db():
     """
-    کانتکست‌منیجر واحد برای دریافت اتصال به پایگاه‌داده.
-    روی PostgreSQL، اتصال را از POOL می‌گیرد؛ روی SQLite، یک اتصال
-    جدید با قفل سراسری می‌سازد.
+    Context manager for database connection (returns a psycopg2 connection or sqlite3 connection).
+    Usage:
+        with get_db() as conn:
+            ... # use conn.cursor() etc.
     """
-    if USE_PG and POOL:
+    if USE_PG:
+        # PostgreSQL connection from pool
         conn = POOL.getconn()
         try:
             yield conn
         finally:
             POOL.putconn(conn)
     else:
-        with _sqlite_lock, sqlite3.connect(SQLITE_FILE) as conn:
-            conn.row_factory = sqlite3.Row
+        # SQLite connection (not truly async-safe, hence protected by lock if used in async context)
+        conn = sqlite3.connect(SQLITE_FILE)
+        try:
             yield conn
-# ---------------------------------------------------------------------------#
-# 2. Data helpers (users, receipts, questions)                               #
-# ---------------------------------------------------------------------------#
-# مقدار جایگزین پارامتر در SQL (بعد از init_db دوباره ست می‌شود)
-_PLACEHOLDER = "%s" if USE_PG else "?"
+        finally:
+            conn.close()
 
-def _update_placeholder() -> None:
-    """پس از init_db فراخوانی می‌شود تا مقدار صحیح برای PG/SQLite را ست کند."""
-    global _PLACEHOLDER
-    _PLACEHOLDER = "%s" if USE_PG else "?"
-
-# ─────────────────────────────────────────────────────────────────────────────
-def _exec(sql: str, params: Tuple = ()) -> None:
-    "اجرای INSERT/UPDATE/DELETE در هر دو پایگاه‌داده."
-    with get_db() as conn:
-        if USE_PG:
+def _exec(sql: str, params: tuple = ()) -> None:
+    """Execute a write operation (INSERT/UPDATE/DELETE) on the database."""
+    if USE_PG:
+        # Use a connection from pool for executing
+        with POOL.getconn() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
-        else:                           # sqlite.cursor کلید contextmanager ندارد
-            cur = conn.cursor()
-            try:
-                cur.execute(sql, params)
-            finally:
-                cur.close()
-        conn.commit()
+                conn.commit()
+            POOL.putconn(conn)
+    else:
+        # SQLite execution (single thread assumed or external lock used)
+        with sqlite3.connect(SQLITE_FILE) as conn:
+            conn.execute(sql, params)
+            conn.commit()
 
-def _fetchone(sql: str, params: Tuple = ()):
-    "اجرای SELECT و برگرداندن یک سطر."
-    with get_db() as conn:
-        if USE_PG:
+def _fetchone(sql: str, params: tuple = ()) -> Optional[tuple]:
+    """Execute a read query (SELECT) and return the first row, or None."""
+    if USE_PG:
+        with POOL.getconn() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
-                return cur.fetchone()
-        else:
-            cur = conn.cursor()
-            try:
-                cur.execute(sql, params)
-                return cur.fetchone()
-            finally:
-                cur.close()
+                row = cur.fetchone()
+            POOL.putconn(conn)
+            return row
+    else:
+        with sqlite3.connect(SQLITE_FILE) as conn:
+            cur = conn.execute(sql, params)
+            return cur.fetchone()
 
-# ─── تقسیم پیام بلند به قطعات کوچکتر ─────────────────────────────────────────
-def _split_message(text: str, limit: int = 4096) -> List[str]:
-
-    """
-    متن بیش‌ازحد بلند را روی \n\n یا \n یا فاصله می‌شکند تا تلگرام خطا ندهد.
-    
-    """
-    if len(text) <= limit:
-        return [text]
-
-    parts: List[str] = []
-    while len(text) > limit:
-        breakpoints = [text.rfind(sep, 0, limit) for sep in ("\n\n", "\n", " ")]
-        idx = max(breakpoints)
-        idx = idx if idx != -1 else limit
-        parts.append(text[:idx].rstrip())
-        text = text[idx:].lstrip()
-    if text:
-        parts.append(text)
-    return parts
-
-# ─────────────────────────────────────────────────────────────────────────────
-def upsert_user(user_id: int, username: str | None,
-                first: str | None, last: str | None) -> None:
-    """
-    درج یا به‌روزرسانی پروفایل کاربر. وضعیت اولیه 'pending' است.
-    """
+# ─── Database Helper Functions ──────────────────────────────────────────────
+def upsert_user(user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> None:
+    """Insert or update a user's profile in the DB. Initial status is 'pending' if new."""
     sql = (
+        # PostgreSQL uses ON CONFLICT for upsert
         f"INSERT INTO users (user_id, username, first_name, last_name) "
         f"VALUES ({_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER}) "
         f"ON CONFLICT (user_id) DO UPDATE SET "
         f"username=EXCLUDED.username, first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name"
         if USE_PG else
-        f"INSERT INTO users (user_id, username, first_name, last_name) "
-        f"VALUES ({_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER}) "
-        f"ON CONFLICT(user_id) DO UPDATE SET "
-        f"username=excluded.username, first_name=excluded.first_name, last_name=excluded.last_name"
+        # SQLite (ON CONFLICT requires a conflict clause on table definition; using REPLACE as simpler approach)
+        f"INSERT OR REPLACE INTO users (user_id, username, first_name, last_name) "
+        f"VALUES ({_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER})"
     )
     _exec(sql, (user_id, username, first, last))
 
-# ─────────────────────────────────────────────────────────────────────────────
-def save_receipt_request(user_id: int, photo_id: str) -> None:
-    "ذخیرهٔ شناسهٔ فایل رسید و تغییر وضعیت کاربر به 'awaiting'."
+def save_receipt_request(user_id: int, receipt_data: str) -> None:
+    """Save the receipt (photo file_id or text) and mark user status as 'awaiting' for admin review."""
     sql = (
-        f"UPDATE users SET receipt_photo_id={_PLACEHOLDER}, status='awaiting' "
-        f"WHERE user_id={_PLACEHOLDER}"
+        f"UPDATE users SET receipt_photo_id={_PLACEHOLDER}, status='awaiting' WHERE user_id={_PLACEHOLDER}"
     )
-    _exec(sql, (photo_id, user_id))
+    _exec(sql, (receipt_data, user_id))
 
 def set_user_status(user_id: int, status: str) -> None:
-    "به‌روزرسانی ستون status (pending / approved / rejected / awaiting)."
-    _exec(
-        f"UPDATE users SET status={_PLACEHOLDER} WHERE user_id={_PLACEHOLDER}",
-        (status, user_id),
-    )
+    """Update the user's status (pending/approved/rejected/awaiting)."""
+    _exec(f"UPDATE users SET status={_PLACEHOLDER} WHERE user_id={_PLACEHOLDER}", (status, user_id))
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 def save_subscription(user_id: int, days: int = 30) -> None:
-    """
-    هنگام تأیید رسید، تاریخ انقضا را به 'امروز + days' ست می‌کند
-    و وضعیت کاربر را 'approved' می‌گذارد.
-    """
+    """On approving a receipt, set subscription expiration (now + days) and status to 'approved'."""
     expire_at = datetime.utcnow() + timedelta(days=days)
     sql = (
-        f"UPDATE users SET expire_at={_PLACEHOLDER}, status='approved' "
-        f"WHERE user_id={_PLACEHOLDER}"
+        f"UPDATE users SET expire_at={_PLACEHOLDER}, status='approved' WHERE user_id={_PLACEHOLDER}"
     )
     _exec(sql, (expire_at, user_id))
 
 def has_active_subscription(user_id: int) -> bool:
-    """
-    بازمی‌گرداند کاربر اشتراک معتبر دارد یا خیر.
-    """
+    """Check if the user has an active subscription (i.e., expire_at in the future and status='approved')."""
     row = _fetchone(
         f"SELECT expire_at FROM users WHERE user_id={_PLACEHOLDER} AND status='approved'",
-        (user_id,),
+        (user_id,)
     )
     if not row or row[0] is None:
         return False
-    expire_at = row[0]  # datetime در PG، str در SQLite (تبدیل ↓)
+    expire_at = row[0]  # In PG this might be a datetime, in SQLite a string
     if isinstance(expire_at, str):
         expire_at = datetime.fromisoformat(expire_at)
     return expire_at >= datetime.utcnow()
 
-# ─────────────────────────────────────────────────────────────────────────────
-def save_question(user_id: int, question: str, answer: str) -> None:
-    "ذخیرهٔ سؤال و جواب برای لاگ و تحلیل‌های بعدی."
-    sql = (
-        f"INSERT INTO questions (user_id, question, answer) "
-        f"VALUES ({_PLACEHOLDER},{_PLACEHOLDER},{_PLACEHOLDER})"
-    )
-    _exec(sql, (user_id, question, answer))
-# ---------------------------------------------------------------------------#
-# 3. OpenAI interface & long-message helper                                  #
-# ---------------------------------------------------------------------------#
+# If there's an external "famous cases" database for /cases command:
+def get_famous_cases() -> list[tuple[int, str]]:
+    """
+    Fetch a list of famous case (id, title) from a local database (e.g., laws.db).
+    Returns a list of (case_id, title).
+    """
+    try:
+        with sqlite3.connect("laws.db") as conn:
+            rows = conn.execute("SELECT id, title FROM famous_cases ORDER BY id ASC").fetchall()
+        return [(row[0], row[1]) for row in rows]
+    except Exception as e:
+        logger.error("Error fetching famous cases: %s", e)
+        return []
+
+def get_case_summary(case_id: int) -> Optional[str]:
+    """Get summary text for a famous case by ID from the local database."""
+    with sqlite3.connect("laws.db") as conn:
+        row = conn.execute("SELECT summary FROM famous_cases WHERE id=?", (case_id,)).fetchone()
+    return row[0] if row else None
+
+# ─── Bot Command Handlers ───────────────────────────────────────────────────
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /start command: greets the user and shows main menu."""
     lang = get_lang(context)
     welcome_text = {
-        "fa": "سلام! 👋\nمن <b>ربات حقوقی RebLawBot</b> هستم.\nبا تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\nبرای شروع یکی از گزینه‌های زیر را انتخاب کنید:",
+        "fa": "سلام! 👋\nمن <b>ربات حقوقی RebLawBot</b> هستم.\nبا تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\nبرای شروع، یکی از گزینه‌های زیر را انتخاب کنید:",
         "en": "Hello! 👋\nI am <b>RebLawBot</b>, your legal assistant.\nPurchase a subscription to ask legal questions.\nPlease choose an option from the menu:",
-        "ku": "سڵاو! 👋\nمن <b>ڕۆبۆتی یاسایی RebLawBot</b>م.\nبە بەشداربوون دەتوانیت پرسیاری یاساییت بکەیت.\nتکایە هەڵبژاردنێک بکە لە خوارەوە:"
+        "ku": "سڵاو! 👋\nمن <b>ڕۆبۆتی یاسایی RebLawBot</b>م.\nبە بەشداربوون دەتوانیت پرسیاری یاساییت بکەیت.\nتکایە یەکێک لە هەڵبژاردەکان دیاری بکە:"
     }
     await update.message.reply_text(
         welcome_text.get(lang, welcome_text["fa"]),
@@ -417,393 +327,261 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode=ParseMode.HTML
     )
 
-async def ask_openai(question: str, *, user_lang: str = "fa") -> str:
-    """
-    ارسال سؤال به GPT و برگرداندن پاسخ متنی.
-    در صورت بروز خطا، پیام کاربرپسند برمی‌گرداند.
-    """
-    system_msg = (
-        "You are an experienced Iranian lawyer. Answer in formal Persian with citations to relevant statutes where possible."
-        if user_lang == "fa"
-        else "You are an experienced lawyer. Answer in clear English."
+async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /buy command: show subscription purchase information."""
+    lang = get_lang(context)
+    # Fetch payment info from environment (wallet addresses, etc.)
+    ton_wallet = getenv_or_die("TON_WALLET_ADDRESS")
+    bank_card = getenv_or_die("BANK_CARD_NUMBER")
+    rlc_wallet = os.getenv("RLC_WALLET_ADDRESS", "N/A")
+    price_text = {
+        "fa": (
+            "🔸 قیمت اشتراک یک‌ماهه:\n\n"
+            f"💳 کارت بانکی: 700,000 تومان\n🏦 شماره کارت: <code>{bank_card}</code>\n\n"
+            f"💎 تون کوین (TON): 1\n👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
+            f"🚀 توکن RLC: 1,800,000\n🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
+        ),
+        "en": (
+            "🔸 One-month subscription price:\n\n"
+            f"💳 Bank (IRR): 700,000 IRR\n🏦 Card Number: <code>{bank_card}</code>\n\n"
+            f"💎 TON Coin (TON): 1\n👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
+            f"🚀 RLC Token: 1,800,000\n🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
+        ),
+        "ku": (
+            "🔸 نرخی اشتراکی مانگانە:\n\n"
+            f"💳 کارتی بانکی: 700,000 تومان\n🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
+            f"💎 تۆن کوین (TON): 1\n👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
+            f"🚀 تۆکینی RLC: 1,800,000\n🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
+        ),
+    }
+    await update.message.reply_text(
+        price_text.get(lang, price_text["fa"]),
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
     )
 
-    try:
-        rsp = await client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": question},
-            ],
-            temperature=0.6,
-            max_tokens=1024,
-        )
-        return rsp.choices[0].message.content.strip()
+async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /send_receipt command: prompt user to send a receipt (photo or text)."""
+    lang = get_lang(context)
+    # Mark that we are now expecting a receipt from the user
+    context.user_data["awaiting_receipt"] = True
+    await update.message.reply_text(tr("send_receipt_prompt", lang))  # send_receipt_prompt text from TEXTS
 
-    except RateLimitError:
-        return "❗️ظرفیت سرویس موقتاً پر است؛ چند ثانیهٔ دیگر تلاش کنید."
-    except AuthenticationError:
-        return "❌ کلید OpenAI نامعتبر است؛ لطفاً مدیر را مطلع کنید."
-    except APIError as exc:
-        logger.error("OpenAI API error: %s", exc)
-        return f"⚠️ خطای سرویس OpenAI: {exc}"
-
-async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /status command: inform the user of their subscription status."""
     uid = update.effective_user.id
     lang = get_lang(context)
+    if has_active_subscription(uid):
+        # Fetch expiration date from DB
+        row = _fetchone("SELECT expire_at FROM users WHERE user_id=" + _PLACEHOLDER, (uid,))
+        expire_at = row[0] if row else None
+        if isinstance(expire_at, str):  # if stored as text in SQLite
+            expire_at = datetime.fromisoformat(expire_at)
+        if expire_at:
+            exp_date = expire_at.strftime("%Y-%m-%d")
+            await update.message.reply_text(
+                tr("status_active", lang).format(date=exp_date),
+                parse_mode=ParseMode.HTML
+            )
+    else:
+        await update.message.reply_text(tr("no_sub", lang))
 
+async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /ask command: forward the question to OpenAI if user has an active subscription."""
+    uid = update.effective_user.id
+    lang = get_lang(context)
     if not has_active_subscription(uid):
         await update.message.reply_text(tr("no_sub", lang))
         return
-
-    voice_file = await update.message.voice.get_file()
-
-    # دانلود فایل در یک فایل موقت
-    with tempfile.NamedTemporaryFile(suffix=".ogg") as temp_audio:
-        await voice_file.download_to_drive(temp_audio.name)
-
+    # Combine the command arguments into the question text
+    question = " ".join(context.args).strip()
+    if not question:
+        # Prompt user to provide a question text after /ask
         await update.message.reply_text({
-            "fa": "🎤 در حال پردازش صدای شما...",
-            "en": "🎤 Processing your voice message...",
-            "ku": "🎤 پەیامی دەنگیت هەڵسەنگاندنە..."
-        }.get(lang, "در حال پردازش صوت..."))
-
-        # تبدیل صوت به متن
-        try:
-            question_text = voice_to_text(temp_audio.name)
-        except Exception as e:
-            logger.error("Voice processing error: %s", e)
-            await update.message.reply_text("❌ خطا در تبدیل صوت به متن.")
-            return
-
-    # ارسال به OpenAI و دریافت پاسخ
-    await answer_question(update, context, question_text, lang)
-
-
-async def send_long(update: Update, text: str, *, parse_mode: str | None = ParseMode.HTML) -> None:
-    """ارسال امن پیام‌های طولانی در چند بخش پیاپی."""
-    for chunk in _split_message(text):
-        await update.message.reply_text(chunk, parse_mode=parse_mode)
-
-
-async def answer_question(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    question: str,
-    lang: str = "fa",
-) -> None:
-    """
-    پاسخ به سؤال حقوقی، ذخیره در DB و ارسال در چند قطعه (در صورت نیاز).
-    """
-    uid = update.effective_user.id
+            "fa": "❓ لطفاً سؤال را بعد از دستور بنویسید.",
+            "en": "❓ Please write your legal question after the command.",
+            "ku": "❓ تکایە پرسیارت لە دوای فەرمانەکە بنوسە."
+        }.get(lang, "❓ لطفاً سؤال را بعد از دستور بنویسید."))
+        return
+    # Send typing action and get answer from OpenAI
     await update.message.chat.send_action(ChatAction.TYPING)
+    try:
+        answer_text = await client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "You are an experienced lawyer. Answer clearly." if lang != "fa" else "You are an experienced Iranian lawyer. Answer in formal Persian."},
+                {"role": "user", "content": question}
+            ],
+            temperature=0.6,
+            max_tokens=1024
+        )
+        answer = answer_text.choices[0].message.content.strip()
+    except (APIError, RateLimitError, AuthenticationError) as e:
+        logger.error("OpenAI API error: %s", e)
+        answer = tr("openai_error", lang) if "openai_error" in TEXTS else "❗️Service is unavailable. Please try again later."
+    # Split answer into smaller parts if too long (to respect Telegram message limit)
+    parts = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
+    for part in parts:
+        await update.message.reply_text(part)
+    # Acknowledge to user that the answer was sent (especially if voice query, see voice handler)
+    await update.message.reply_text({
+        "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال دیگری بپرسید.",
+        "en": "✅ Answer sent. You may ask another question if needed.",
+        "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری تر بکەیت."
+    }[lang])
 
-    answer = await ask_openai(question, user_lang=lang)
-    save_question(uid, question, answer)
-    await send_long(update, answer)
+async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /about_token command: provide information about the token system."""
+    lang = get_lang(context)
+    # Assuming TEXTS contains an entry for "about_token" in different languages
+    await update.message.reply_text(tr("about_token_info", lang), parse_mode=ParseMode.HTML)
 
-# ---------------------------------------------------------------------------#
-# 3.5 Famous cases – نمایش پرونده‌های مشهور                                 #
-# ---------------------------------------------------------------------------#
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackQueryHandler
-
-def get_famous_cases() -> list[tuple[int, str]]:
-    """خواندن لیست پرونده‌ها از laws.db"""
-    with sqlite3.connect("laws.db") as conn:
-        rows = conn.execute("SELECT id, title FROM famous_cases ORDER BY id ASC").fetchall()
-    return [(row[0], row[1]) for row in rows]
-
-def get_case_summary(case_id: int) -> str | None:
-    """دریافت خلاصهٔ پرونده با ID"""
-    with sqlite3.connect("laws.db") as conn:
-        row = conn.execute("SELECT summary FROM famous_cases WHERE id=?", (case_id,)).fetchone()
-    return row[0] if row else None
+async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /lang command: show language selection keyboard."""
+    await update.message.reply_text(
+        "لطفاً زبان مورد نظر را انتخاب کنید:\nPlease select your preferred language:\nتکایە زمانت هەلبژێرە:",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("فارسی"), KeyboardButton("English"), KeyboardButton("کوردی")]], one_time_keyboard=True, resize_keyboard=True)
+    )
 
 async def cases_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """نمایش فهرست پرونده‌های مشهور"""
+    """Handle /cases command: display a list of famous cases with inline buttons."""
     cases = get_famous_cases()
     if not cases:
-        await update.message.reply_text("❌ پرونده‌ای یافت نشد.")
+        await update.message.reply_text("❌ پرونده‌ای یافت نشد." if get_lang(context) == "fa" else "❌ No cases found.")
         return
-
-    keyboard = [
-        [InlineKeyboardButton(title, callback_data=f"case:{cid}")]
-        for cid, title in cases
-    ]
+    # Create inline button list
+    keyboard = [[InlineKeyboardButton(title, callback_data=f"case:{cid}")] for cid, title in cases]
     await update.message.reply_text(
-        "📚 فهرست پرونده‌های مشهور:\nبرای مشاهده خلاصه، روی یکی از موارد زیر کلیک کنید:",
+        "📚 فهرست پرونده‌های مشهور:\nبرای مشاهده خلاصه، روی یکی از موارد زیر کلیک کنید:" if get_lang(context) == "fa" else 
+        "📚 Famous Cases:\nClick a case below to see its summary:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ─── Callback Query Handlers ────────────────────────────────────────────────
 async def case_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پردازش کلیک روی پرونده و ارسال خلاصه"""
+    """Process the inline button for a case (from /cases list) and send the case summary."""
     query = update.callback_query
-    await query.answer()
-
-    if not query.data.startswith("case:"):
-        return
-
+    await query.answer()  # acknowledge the callback
+    if not query.data or not query.data.startswith("case:"):
+        return  # not a case query
     case_id = int(query.data.split(":")[1])
     summary = get_case_summary(case_id)
     if summary:
+        # Send only up to 4000 chars to avoid Telegram message limit
         await query.message.reply_text(f"📝 خلاصه:\n\n{summary[:4000]}")
     else:
-        await query.message.reply_text("❌ خطا در دریافت پرونده.")
+        await query.message.reply_text("❌ خطا در دریافت پرونده." if get_lang(context) == "fa" else "❌ Failed to retrieve case summary.")
 
-# ---------------------------------------------------------------------------#
-# 4. Receipt flow – user → admin review → subscription grant                 #
-# ---------------------------------------------------------------------------#
-ADMIN_ID = int(getenv_or_die("ADMIN_ID"))          # آی‌دی تِلگرامی مدیر
-SUBS_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))   # طول پیش‌فرض اشتراک
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Process inline buttons for approving or rejecting a subscription receipt (admin only)."""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        action, uid_str = query.data.split(":")
+        target_uid = int(uid_str)
+    except Exception:
+        # Invalid data format in callback
+        await query.answer("داده دکمه نامعتبر است." if get_lang(context) == "fa" else "Invalid button data.", show_alert=True)
+        return
+    # Ensure only the admin can approve/reject receipts
+    admin_id = int(getenv_or_die("ADMIN_ID"))
+    if update.effective_user.id != admin_id:
+        await query.answer("فقط مدیر می‌تواند این کار را انجام دهد." if get_lang(context) == "fa" else "Only the admin can perform this action.", show_alert=True)
+        return
+    # Perform the requested action (approve or reject)
+    if action == "approve":
+        save_subscription(target_uid, days=int(os.getenv("SUBSCRIPTION_DAYS", "30") or 30))
+        await context.bot.send_message(chat_id=target_uid, text="🎉 اشتراک شما تأیید شد." if get_lang(context) == "fa" else "🎉 Your subscription has been approved.")
+        status_text = "✔️ تأیید شد"  # Approved (in Persian)
+    else:  # "reject"
+        set_user_status(target_uid, "rejected")
+        await context.bot.send_message(chat_id=target_uid, text="❌ رسید شما رد شد." if get_lang(context) == "fa" else "❌ Your receipt was rejected.")
+        status_text = "❌ رد شد"  # Rejected (in Persian)
+    # Update the admin's message (the one with receipt and buttons) to reflect the decision
+    try:
+        updated_caption = (query.message.caption or query.message.text or "") + f"\n\n<b>وضعیت:</b> {status_text}"
+        if query.message.photo:
+            # If the message was a photo with a caption
+            await query.message.edit_caption(updated_caption, parse_mode=ParseMode.HTML)
+        else:
+            await query.message.edit_text(updated_caption, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error("Failed to edit admin message status: %s", e)
+
+# ─── Message Handlers (non-command messages) ────────────────────────────────
+async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle language selection from the custom keyboard (text messages 'فارسی', 'English', 'کوردی')."""
+    choice = (update.message.text or "").strip()
+    # Set language based on user's choice
+    if choice in ["فارسی", "Farsi", "Persian"]:
+        context.user_data["lang"] = "fa"
+        await update.message.reply_text("زبان شما فارسی تنظیم شد." if choice == "فارسی" else "Language set to Persian.")
+    elif choice in ["English", "انگلیسی"]:
+        context.user_data["lang"] = "en"
+        await update.message.reply_text("Language changed to English.")
+    elif choice in ["کوردی", "Kurdish"]:
+        context.user_data["lang"] = "ku"
+        await update.message.reply_text("زمانت کرا بە کوردی." if choice == "کوردی" else "Language set to Kurdish.")
 
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle an incoming receipt (photo or text message) after /send_receipt was used."""
     msg: Message = update.message
     uid = update.effective_user.id
-
-    # فقط وقتی منتظر رسید هستیم یا پیام شامل عکس باشد ادامه بده
-    if not context.user_data.get("awaiting_receipt") and not msg.photo and not msg.text:
+    # Only proceed if we asked for a receipt (awaiting_receipt) or the message is a photo.
+    if not context.user_data.get("awaiting_receipt") and not msg.photo:
+        # If not expecting a receipt and it's not a photo, ignore this message.
         return
-
+    # Once we handle this message, reset the flag
     context.user_data["awaiting_receipt"] = False
-
-    # ثبت اطلاعات کاربر در دیتابیس
-    upsert_user(
-        uid,
-        msg.from_user.username,
-        msg.from_user.first_name,
-        msg.from_user.last_name,
-    )
-
-    # ذخیره رسید
-    photo_id: Optional[str] = msg.photo[-1].file_id if msg.photo else None
-    save_receipt_request(uid, photo_id or (msg.text or "متن خالی"))
-
-    # ساخت دکمه‌ها
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{uid}"),
-            InlineKeyboardButton("❌ رد", callback_data=f"reject:{uid}")
-        ]
-    ])
-
+    # Upsert user info in DB (ensure user exists in DB)
+    upsert_user(uid, msg.from_user.username, msg.from_user.first_name, msg.from_user.last_name)
+    # Save the receipt data (photo file_id or text content)
+    photo_id = msg.photo[-1].file_id if msg.photo else None
+    receipt_data = photo_id if photo_id else (msg.text or "<empty>")
+    save_receipt_request(uid, receipt_data)
+    # Prepare inline buttons for admin approval
+    approve_button = InlineKeyboardButton("✅ تأیید", callback_data=f"approve:{uid}")
+    reject_button  = InlineKeyboardButton("❌ رد", callback_data=f"reject:{uid}")
+    admin_kb = InlineKeyboardMarkup([[approve_button, reject_button]])
+    # Prepare caption for the admin's message
     caption = (
         f"📩 رسید جدید از <a href='tg://user?id={uid}'>{msg.from_user.full_name}</a>\n"
         f"نام کاربری: @{msg.from_user.username or 'بدون'}\n\nبررسی مدیر:"
     )
+    # Send the receipt to admin (photo or text)
+    admin_chat_id = int(getenv_or_die("ADMIN_ID"))
     if photo_id:
-        await context.bot.send_photo(
-            chat_id=int(os.getenv("ADMIN_ID")),
-            photo=photo_id,
-            caption=caption,
-            reply_markup=kb,
-            parse_mode=ParseMode.HTML
-        )
+        await context.bot.send_photo(chat_id=admin_chat_id, photo=photo_id, caption=caption, reply_markup=admin_kb, parse_mode=ParseMode.HTML)
+
     else:
+        # If it's text receipt, include the text in the message body
 
-        await context.bot.send_message(
-            chat_id=int(os.getenv("ADMIN_ID")),
-            text=f"{caption}\n\n{msg.text}",
-            reply_markup=kb,
-            parse_mode=ParseMode.HTML
-        )
+        await context.bot.send_message(chat_id=admin_chat_id, text=f"{caption}\n\n{msg.text}", reply_markup=admin_kb, parse_mode=ParseMode.HTML)
 
-    await msg.reply_text("✅ رسید شما ارسال شد. لطفاً منتظر تأیید مدیر بمانید.")
+    # Acknowledge to the user that their receipt was sent for review
 
+    await msg.reply_text("✅ رسید شما ارسال شد. لطفاً منتظر تأیید مدیر بمانید." if get_lang(context) == "fa" else "✅ Your receipt has been sent. Please wait for admin approval.")
 
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-
-    query = update.callback_query
-    await query.answer()
-
-    try:
-        action, uid_str = query.data.split(":")
-        uid = int(uid_str)
-    except Exception:
-        await query.answer("داده دکمه نامعتبر است.", show_alert=True)
-        return
-
-    if update.effective_user.id != int(os.getenv("ADMIN_ID")):
-        await query.answer("فقط مدیر می‌تواند این کار را انجام دهد.", show_alert=True)
-        return
-
-    if action == "approve":
-        save_subscription(uid, days=30)
-        await context.bot.send_message(uid, "🎉 اشتراک شما تأیید شد.")
-        status_text = "✔️ تأیید شد"
-    else:
-        set_user_status(uid, "rejected")
-        await context.bot.send_message(uid, "❌ رسید شما رد شد.")
-        status_text = "❌ رد شد"
-
-    # ویرایش پیام مدیر
-    try:
-        updated = (query.message.caption or query.message.text or "") + f"\n\n<b>وضعیت:</b> {status_text}"
-        if query.message.photo:
-            await query.message.edit_caption(updated, parse_mode=ParseMode.HTML)
-        else:
-            await query.message.edit_text(updated, parse_mode=ParseMode.HTML)
-    except Exception as e:
-        print("❌ خطا در ویرایش پیام:", e)
-
-# ---------------------------------------------------------------------------#
-# 5. Command handlers & menu router                                          #
-# ---------------------------------------------------------------------------#
-
-# ─── متن‌های ثابت (FA/EN) ───────────────────────────────────────────────────
-WELCOME_FA = (
-    "سلام! 👋\n"
-    "من <b>ربات حقوقی RebLawBot</b> هستم.\n\n"
-    "با تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\n"
-    "برای شروع یکی از گزینه‌های زیر را انتخاب کنید:"
-)
-WELCOME_EN = (
-    "Hello! 👋\n"
-    "I am <b>RebLawBot</b>, your legal assistant.\n\n"
-    "Purchase a subscription to ask legal questions.\n"
-    "Please choose an option from the menu:"
-)
-
-# جایگزینی تابع
-
-MENU_KB = "کیبورد منو"
-
-def register_handlers(app):
-        app.add_handler(CommandHandler("buy", buy_cmd))
-        app.add_handler(CommandHandler("start", start_cmd))
-
-        # --- انتخاب زبان (Language Keyboard) ---
-LANG_KB = ReplyKeyboardMarkup(
-    [
-        [KeyboardButton("فارسی"), KeyboardButton("English"), KeyboardButton("کوردی")],
-    ],
-    resize_keyboard=True,
-    one_time_keyboard=True,
-)
-
-# ─── فرمان‌ها ────────────────────────────────────────────────────────────────
-MENU_KB = ReplyKeyboardMarkup(
-    [
-        [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("📤 ارسال رسید")],
-        [KeyboardButton("⚖️ سؤال حقوقی"), KeyboardButton("ℹ️ درباره توکن")],
-        [KeyboardButton("/lang")],  # این خط را اضافه کنید
-    ],
-    resize_keyboard=True,
-)
-
-TON_WALLET_ADDR = getenv_or_die("TON_WALLET_ADDRESS")
-BANK_CARD = getenv_or_die("BANK_CARD_NUMBER")
-
-async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = get_lang(context)
-    ton_wallet = getenv_or_die("TON_WALLET_ADDRESS")
-    bank_card = getenv_or_die("BANK_CARD_NUMBER")
-    rlc_wallet = os.getenv("RLC_WALLET_ADDRESS", "آدرس تنظیم نشده")
-
-    price_text = {
-        "fa": (
-            f"🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 700،000 تومان\n"
-            f"🏦 شماره کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تون کوین (TON): 1 \n"
-            f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,800,000\n"
-            f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
-        ),
-        "en": (
-            f"🔸 One-month subscription price:\n\n"
-            f"💳 Bank Card: 700،000 IRR\n"
-            f"🏦 Card Number: <code>{bank_card}</code>\n\n"
-            f"💎 TON Coin (TON): 1 \n"
-            f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,800,000\n"
-            f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
-        ),
-        "ku": (
-            f"🔸 نرخی بەشداریکردنی مانگانە:\n\n"
-            f"💳 کارتی بانک: 700،000 تومان\n"
-            f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کۆین (TON): 1 \n"
-            f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
-            f"🚀 تۆکێنی RLC: ١٬٨٠٠٬٠٠٠\n"
-            f"🔗 ناونیشانی والت RLC: <code>{rlc_wallet}</code>\n"
-        ),
-    }
-
-    await update.message.reply_text(
-        price_text.get(lang, price_text["fa"]),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
-
-
-async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش کیبورد انتخاب زبان هنگام اجرای /lang"""
-    await update.message.reply_text(
-        "لطفاً زبان مورد نظر را انتخاب کنید:\nPlease select your preferred language:\nتکایە زمانت هەلبژێرە:",
-        reply_markup=LANG_KB,
-    )
-
-
-# دکمه یا فرمان «📤 ارسال رسید»؛ کاربر باید بلافاصله عکس یا متن ارسال کند
-async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = get_lang(context)
-    context.user_data["awaiting_receipt"] = True
-    await update.message.reply_text(tr("send_receipt_prompt", lang))
-
-async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    uid = update.effective_user.id
-    lang = get_lang(context)
-
-    if has_active_subscription(uid):
-        row = _fetchone("SELECT expire_at FROM users WHERE user_id=" + _PLACEHOLDER, (uid,))
-        expire_at = row[0]
-        if isinstance(expire_at, str):
-            expire_at = datetime.fromisoformat(expire_at)
-        await update.message.reply_text(
-            tr("status_active", lang).format(date=expire_at.strftime("%Y-%m-%d")),
-            parse_mode=ParseMode.HTML,
-        )
-    else:
-        await update.message.reply_text(tr("no_sub", lang))
-
-
-
-async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    uid = update.effective_user.id
-    lang = get_lang(context)
-
-    if not has_active_subscription(uid):
-        await update.message.reply_text(tr("no_sub", lang))
-        return
-
-    question = " ".join(context.args)
-    if not question:
-        await update.message.reply_text({
-            "fa": "❓ لطفاً سؤال را بعد از دستور بنویسید.",
-            "en": "❓ Please write your legal question after the command.",
-            "ku": "❓ تکایە پرسیارت لە دوای فەرمانەکە بنوسە.",
-        }.get(lang, "❓ لطفاً سؤال را بعد از دستور بنویسید."))
-        return
-
-    await answer_question(update, context, question, lang)
-
-
-# ─── روتر پیام‌های متنی منو ─────────────────────────────────────────────────
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Catch-all handler for general text messages (excluding commands and specific cases)."""
     text = (update.message.text or "").strip()
     lang = get_lang(context)
-
-    # دستورات منو بر اساس زبان
+    # Route by content if it matches menu options
     if lang == "fa":
         if text == "🛒 خرید اشتراک":
             await buy_cmd(update, context)
         elif text == "📤 ارسال رسید":
             await send_receipt_cmd(update, context)
         elif text == "⚖️ سؤال حقوقی":
-            await update.message.reply_text("سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(
+                "سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>",
+                parse_mode=ParseMode.HTML
+            )
+
         elif text == "🎤 سؤال صوتی":
-            await update.message.reply_text("🎙️ لطفاً سؤال خود را به صورت پیام صوتی (voice) ارسال نمایید.\n\n📌 فقط پیام صوتی تلگرام پشتیبانی می‌شود.")
+            await update.message.reply_text("🎙️ لطفاً سؤال خود را به صورت پیام صوتی ارسال کنید.\n\n📌 فقط پیام صوتی تلگرام پشتیبانی می‌شود.")
+
         elif text == "ℹ️ درباره توکن":
             await about_token(update, context)
 
@@ -813,9 +591,14 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif text == "📤 Send Receipt":
             await send_receipt_cmd(update, context)
         elif text == "⚖️ Legal Question":
-            await update.message.reply_text("Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(
+                "Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>",
+                parse_mode=ParseMode.HTML
+            )
+
         elif text == "🎤 Voice Question":
-            await update.message.reply_text("🎙️ Please send your legal question as a Telegram voice message.\n\n📌 Only Telegram voice messages are supported.")
+            await update.message.reply_text("🎙️ Please send your legal question as a voice message.\n\n📌 Only Telegram voice messages are supported.")
+
         elif text == "ℹ️ About Token":
             await about_token(update, context)
 
@@ -825,130 +608,97 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif text == "📤 ناردنی پسوڵە":
             await send_receipt_cmd(update, context)
         elif text == "⚖️ پرسیاری یاسایی":
-            await update.message.reply_text("پرسیارەکەت بنێرە لە دوای /ask.\nنموونە:\n<code>/ask یاسای کار چییە؟</code>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(
+                "پرسیارت لە دوای /ask بنووسە.\nنمونة:\n<code>/ask یاسای کار چیە؟</code>",
+                parse_mode=ParseMode.HTML
+            )
         elif text == "🎤 پرسیاری دەنگی":
-            await update.message.reply_text("🎙️ تکایە پرسیارەکەت بە شێوەی پەیامی دەنگی بنێرە.\n\n📌 تەنها پەیامەکانی دەنگی تێلەگرام پشتیوانی دەکرێن.")
+            await update.message.reply_text("🎙️ تکایە پرسیاری یاساییەکەت وەکوو نامەی دەنگی بنێرە.\n\n📌 تەنها نامەی دەنگیی تەلەگرام پشتیوانی دەکرێت.")
         elif text == "ℹ️ دەربارەی تۆکێن":
             await about_token(update, context)
+    # If text doesn't match any known command or menu option, we could handle it (e.g., ask AI directly if subscribed).
+    # For now, do nothing or send a default message:
+    # else:
+    #     await update.message.reply_text("I'm not sure how to respond to that. Use /help for commands.")
 
-    else:
-        await update.message.reply_text("❌ دستور نامعتبر است. لطفاً از منو استفاده کنید.")
-
-
-async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بررسی و تنظیم زبان پس از انتخاب توسط کاربر"""
-    text = (update.message.text or "").strip()
-    lang_options = {
-        "فارسی": "fa",
-        "English": "en",
-        "کوردی": "ku"
-    }
-
-    if text in lang_options:
-        lang = lang_options[text]
-        context.user_data["lang"] = lang
-
-        await update.message.reply_text({
-            "fa": "✅ زبان به فارسی تغییر کرد.",
-            "en": "✅ Language changed to English.",
-            "ku": "✅ زمان بۆ کوردی گۆڕدرا."
-        }[lang], reply_markup=get_main_menu(lang))
-        return
-
-    await text_router(update, context)
-
-# ---------------------------------------------------------------------------#
-# 6. Token info, handler wiring & main                                       #
-# ---------------------------------------------------------------------------#
-TOKEN_IMG = Path(__file__).with_name("reblawcoin.png")  # تصویر لوگوی RLC
-
-async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اطلاعات توکن RLC + لینک خرید (چندزبانه)."""
-    msg = update.effective_message
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle incoming voice messages (convert to text and answer if subscribed)."""
+    uid = update.effective_user.id
     lang = get_lang(context)
+    if not has_active_subscription(uid):
 
-    token_info = {
-        "fa": (
-            "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n\n"
-            "<b>اهداف پروژه:</b>\n"
-            "• سرمایه‌گذاری در نوآوری‌های حقوقی\n"
-            "• نهادینه‌سازی عدالت روی بلاک‌چین\n"
-            "• سودآوری پایدار برای سرمایه‌گذاران\n\n"
-            "برای خرید سریع روی لینک زیر بزنید:\n"
-            "<a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>خرید از Blum</a>"
-        ),
-        "en": (
-            "🎉 <b>RebLawCoin (RLC)</b> – The first cryptocurrency focused on legal services.\n\n"
-            "<b>Project Objectives:</b>\n"
-            "• Investing in legal innovations\n"
-            "• Institutionalizing justice on blockchain\n"
-            "• Sustainable profitability for investors\n\n"
-            "Click the link below for quick purchase:\n"
-            "<a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>Buy from Blum</a>"
-        ),
-        "ku": (
-            "🎉 <b>تۆکێنی RebLawCoin (RLC)</b> – یەکەم دراوە دیجیتاڵیی تایبەت بە خزمەتگوزارییە یاساییەکان.\n\n"
-            "<b>ئامانجەکانی پڕۆژەکە:</b>\n"
-            "• وەبەرهێنان لە داهێنانی یاسایی\n"
-            "• دامەزراندنی دادپەروەری بە شێوەی بلۆکچەین\n"
-            "• قازانجی بەردەوام بۆ وەبەرهێنەران\n\n"
-            "بۆ کڕینی خێرا لەسەر ئەم لینکە کلیک بکە:\n"
-            "<a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>کڕین لە Blum</a>"
-        ),
-    }
+        # Only allow voice questions if subscribed
 
-    if TOKEN_IMG.exists():
-        await msg.reply_photo(TOKEN_IMG.open("rb"))
-
-    await msg.reply_text(
-        token_info.get(lang, token_info["fa"]),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
-
-import whisper
-import tempfile
-
-model = whisper.load_model("base")  # می‌توانید از مدل‌های دقیق‌تر مانند "small" یا "medium" هم استفاده کنید
-
-async def voice_to_text(file_path):
-    result = model.transcribe(file_path)
-    return result["text"]
-
-async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    lang = get_lang(context)
-
-    if not has_active_subscription(user_id):
         await update.message.reply_text(tr("no_sub", lang))
         return
 
+    # Download the voice file
+
     voice_file = await update.message.voice.get_file()
+    temp_dir = tempfile.mkdtemp()
+    ogg_path = os.path.join(temp_dir, "voice.ogg")
+    wav_path = os.path.join(temp_dir, "voice.wav")
+    await voice_file.download_to_drive(ogg_path)
 
-    # دانلود فایل صوتی
-    with tempfile.NamedTemporaryFile(suffix=".ogg") as voice_temp:
-        await voice_file.download_to_drive(voice_temp.name)
+    # Convert OGG (Telegram voice format) to WAV using ffmpeg
 
-        await update.message.reply_text({
-            "fa": "🎤 در حال پردازش سؤال صوتی شما...",
-            "en": "🎤 Processing your voice message...",
-            "ku": "🎤 هەڵسەنگاندنی دەنگی نێردراوت..."
-        }[lang])
+    try:
+        ffmpeg.input(ogg_path).output(wav_path).run(quiet=True, overwrite_output=True)
+    except Exception as e:
+        logger.error("FFmpeg conversion error: %s", e)
+        await update.message.reply_text("❌ خطا در پردازش پیام صوتی." if lang == "fa" else "❌ Error processing voice message.")
+        return
 
-        # تبدیل صوت به متن
-        question_text = await voice_to_text(voice_temp.name)
+    # Transcribe voice to text
 
-    # ارسال پاسخ تولیدشده توسط OpenAI
-    await answer_question(update, context, question_text, lang)
+    try:
+        question_text = voice_to_text(wav_path)
+    except Exception as e:
+        logger.error("Whisper transcription error: %s", e)
+        await update.message.reply_text("❌ خطا در تبدیل صدا به متن." if lang == "fa" else "❌ Could not transcribe the voice message.")
+        return
+
+    # Now answer the question using the same logic as /ask
+
+    await update.message.reply_text("🎙️❓ " + question_text)  # Echo the transcribed question to user (optional)
+
+    # Use the ask_cmd logic to get answer
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+    try:
+        answer_text = await client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "You are an experienced lawyer. Answer clearly." if lang != "fa" else "You are an experienced Iranian lawyer. Answer in formal Persian."},
+                {"role": "user", "content": question_text}
+            ],
+            temperature=0.6,
+            max_tokens=1024
+        )
+        answer = answer_text.choices[0].message.content.strip()
+    except (APIError, RateLimitError, AuthenticationError) as e:
+        logger.error("OpenAI API error (voice question): %s", e)
+        answer = tr("openai_error", lang) if "openai_error" in TEXTS else "❗️Service is unavailable. Please try again later."
+
+    # Send answer (split into parts if too long)
+
+    parts = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
+    for part in parts:
+        await update.message.reply_text(part)
+    # Inform user they can ask another
     await update.message.reply_text({
-    "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال صوتی دیگری بفرستید.",
-    "en": "✅ Answer sent. You may send another voice question if needed.",
-    "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری دەنگییەکی تر بنێریت."
-}[lang])
-    
+        "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال صوتی دیگری بفرستید.",
+        "en": "✅ Answer sent. You may send another voice question if needed.",
+        "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری دەنگییەکی تر بنێریت."
+    }[lang])
 
-# ─── ثبت تمام هندلرها ───────────────────────────────────────────────────────
+# ─── Register Handlers ──────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
+
+    """Register all command and message handlers with the Application."""
+
+    # Command handlers
+
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("buy", buy_cmd))
     app.add_handler(CommandHandler("send_receipt", send_receipt_cmd))
@@ -957,40 +707,41 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("lang", lang_cmd))
     app.add_handler(CommandHandler("cases", cases_cmd))
+
+    # Callback query handlers for inline buttons
+
     app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"))
 
-    app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"), group=0)
+    # Non-command message handlers (ordered by group to control priority)
 
-    # ابتدا متن زبان را بررسی و سپس متن رسید را بررسی کنید
-    app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=1)
-    app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=2)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=3)
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))  
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=1)
+    app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=0)
+    app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=1)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=2)
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=3)
 
+# ─── Main Entrypoint ───────────────────────────────────────────────────────
 
-def main():
-    # دریافت توکن از .env
+def main() -> None:
+    """Initialize the bot and start polling for updates."""
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
-        raise ValueError("❌ BOT_TOKEN در فایل .env یافت نشد.")
-    
-    init_db()  # ✅ جدول‌ها را می‌سازد
-
-    # ساخت اپلیکیشن تلگرام
+        raise RuntimeError("❌ BOT_TOKEN not found in environment.")
+   
+    # Initialize database (ensure tables are created before bot starts)
+    init_db()  # ✅ Important: call before starting the bot
+    # Build the Telegram Application
+   
     application = Application.builder().token(bot_token).build()
-
-    # ثبت هندلرها
+   
+    # Register all command and message handlers
+   
     register_handlers(application)
-
+   
     logger.info("🤖 RebLawBot started. Waiting for updates...")
-
-    # اجرای polling با دریافت همه نوع آپدیت
+    # Start the bot (polling Telegram for new updates)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-
-
-# ❗ این خط باید خارج از تابع باشد
+# Run the bot if this script is executed directly
 if __name__ == "__main__":
     main()
-    
