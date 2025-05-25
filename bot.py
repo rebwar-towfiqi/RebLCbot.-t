@@ -125,9 +125,11 @@ def get_main_menu(lang: str):
 
 
 def tr(key: str, lang: str = "fa", **kwargs) -> str:
-  
+ 
+
     """دریافت متن ترجمه‌شده بر اساس کلید و زبان کاربر"""
-    
+ 
+   
     base = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
     return base.format(**kwargs)
 
@@ -308,11 +310,11 @@ def _fetchone(sql: str, params: Tuple = ()):
                 cur.close()
 
 # ─── تقسیم پیام بلند به قطعات کوچکتر ─────────────────────────────────────────
-
 def _split_message(text: str, limit: int = 4096) -> List[str]:
-   
+
     """
     متن بیش‌ازحد بلند را روی \n\n یا \n یا فاصله می‌شکند تا تلگرام خطا ندهد.
+    
     """
     if len(text) <= limit:
         return [text]
@@ -974,15 +976,7 @@ def main():
     if not bot_token:
         raise ValueError("❌ BOT_TOKEN در فایل .env یافت نشد.")
 
-    # ساخت اپلیکیشن تلگرام
-    application = new_func1(bot_token)
-
-    # ثبت هندلرها
-    register_handlers(application)
-
-    # اجرای polling با دریافت همه نوع آپدیت
-    new_func(application)
-
+   # ساخت اپلیکیشن تلگرام
 def new_func1(bot_token):
     application = Application.builder().token(bot_token).build()
     return application
@@ -997,4 +991,3 @@ if __name__ == "__main__":
     main()
 
 logger.info("🤖 RebLawBot started. Waiting for updates...")
-
