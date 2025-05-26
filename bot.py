@@ -78,7 +78,6 @@ def get_main_menu(lang: str):
 
 
 
-
 def tr(key: str, lang: str = "fa", **kwargs) -> str:
     """Translate text by key for the given language (fallback to Persian)."""
     base_text = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
@@ -590,8 +589,8 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif text == "📚 پرونده‌های مشهور":
             await cases_cmd(update, context)
 
-        elif lang == "en":
-           if text == "🛒 Buy Subscription":
+    elif lang == "en":
+        if text == "🛒 Buy Subscription":
             await buy_cmd(update, context)
         elif text == "📤 Send Receipt":
             await send_receipt_cmd(update, context)
@@ -627,7 +626,8 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif text == "📚 پرۆسەی ناودار":
            await cases_cmd(update, context)
 
-# If text doesn't match any known command or menu option, we could handle it (e.g., ask AI directly if subscribed).
+   
+    # If text doesn't match any known command or menu option, we could handle it (e.g., ask AI directly if subscribed).
     # For now, do nothing or send a default message:
     # else:
     #     await update.message.reply_text("I'm not sure how to respond to that. Use /help for commands.")
