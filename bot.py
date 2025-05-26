@@ -568,7 +568,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Catch-all handler for general text messages (excluding commands and specific cases)."""
-     text = (update.message.text or "").strip()
+    text = (update.message.text or "").strip()
     lang = get_lang(context)
     # Route by content if it matches menu options
     if lang == "fa":
