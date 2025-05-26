@@ -566,10 +566,11 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await msg.reply_text("✅ رسید شما ارسال شد. لطفاً منتظر تأیید مدیر بمانید." if get_lang(context) == "fa" else "✅ Your receipt has been sent. Please wait for admin approval.")
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Catch-all handler for general text messages (excluding commands and specific cases)."""
+  
     text = (update.message.text or "").strip()
     lang = get_lang(context)
-    # Route by content if it matches menu options
+
+    # دستورات منو بر اساس زبان
     if lang == "fa":
         if text == "🛒 خرید اشتراک":
             await buy_cmd(update, context)
@@ -580,10 +581,11 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 "سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>",
                 parse_mode=ParseMode.HTML
             )
-
+     
         elif text == "🎤 سؤال صوتی":
-            await update.message.reply_text("🎙️ لطفاً سؤال خود را به صورت پیام صوتی ارسال کنید.\n\n📌 فقط پیام صوتی تلگرام پشتیبانی می‌شود.")
-
+            await update.message.reply_text(
+                "🎙️ لطفاً سؤال خود را به صورت پیام صوتی (voice) ارسال نمایید.\n\n📌 فقط پیام صوتی تلگرام پشتیبانی می‌شود."
+            )
         elif text == "ℹ️ درباره توکن":
             await about_token(update, context)
         elif text == "📚 پرونده‌های مشهور":
@@ -599,15 +601,16 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 "Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>",
                 parse_mode=ParseMode.HTML
             )
-
+      
         elif text == "🎤 Voice Question":
-            await update.message.reply_text("🎙️ Please send your legal question as a voice message.\n\n📌 Only Telegram voice messages are supported.")
-
+            await update.message.reply_text(
+                "🎙️ Please send your legal question as a Telegram voice message.\n\n📌 Only Telegram voice messages are supported."
+            )
         elif text == "ℹ️ About Token":
             await about_token(update, context)
-        elif text == "Famous Cases":
+        elif text == "📚 Famous Cases":
             await cases_cmd(update, context)
-            
+
     elif lang == "ku":
         if text == "🛒 کڕینی بەشداریکردن":
             await buy_cmd(update, context)
@@ -615,16 +618,21 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await send_receipt_cmd(update, context)
         elif text == "⚖️ پرسیاری یاسایی":
             await update.message.reply_text(
-                "پرسیارت لە دوای /ask بنووسە.\nنمونة:\n<code>/ask یاسای کار چیە؟</code>",
+                "پرسیارەکەت بنێرە لە دوای /ask.\nنموونە:\n<code>/ask یاسای کار چییە؟</code>",
                 parse_mode=ParseMode.HTML
             )
         elif text == "🎤 پرسیاری دەنگی":
-            await update.message.reply_text("🎙️ تکایە پرسیاری یاساییەکەت وەکوو نامەی دەنگی بنێرە.\n\n📌 تەنها نامەی دەنگیی تەلەگرام پشتیوانی دەکرێت.")
+            await update.message.reply_text(
+                "🎙️ تکایە پرسیارەکەت بە شێوەی پەیامی دەنگی بنێرە.\n\n📌 تەنها پەیامەکانی دەنگی تێلەگرام پشتیوانی دەکرێن."
+            )
         elif text == "ℹ️ دەربارەی تۆکێن":
             await about_token(update, context)
-            
-        elif text == "📚 پرۆسەی ناودار":
-           await cases_cmd(update, context)
+        elif text == "📚 پرۆسەی ناسراو":
+            await cases_cmd(update, context)
+
+    else:
+        await update.message.reply_text("❌ دستور نامعتبر است. لطفاً از منو استفاده کنید.")
+
 
    
     # If text doesn't match any known command or menu option, we could handle it (e.g., ask AI directly if subscribed).
