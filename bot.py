@@ -568,7 +568,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Catch-all handler for general text messages (excluding commands and specific cases)."""
-    text = (update.message.text or "").strip()
+     text = (update.message.text or "").strip()
     lang = get_lang(context)
     # Route by content if it matches menu options
     if lang == "fa":
@@ -587,9 +587,11 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         elif text == "ℹ️ درباره توکن":
             await about_token(update, context)
+        elif text == "📚 پرونده‌های مشهور":
+            await cases_cmd(update, context)
 
-    elif lang == "en":
-        if text == "🛒 Buy Subscription":
+        elif lang == "en":
+           if text == "🛒 Buy Subscription":
             await buy_cmd(update, context)
         elif text == "📤 Send Receipt":
             await send_receipt_cmd(update, context)
@@ -604,7 +606,9 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         elif text == "ℹ️ About Token":
             await about_token(update, context)
-
+        elif text == "Famous Cases":
+            await cases_cmd(update, context)
+            
     elif lang == "ku":
         if text == "🛒 کڕینی بەشداریکردن":
             await buy_cmd(update, context)
@@ -619,12 +623,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text("🎙️ تکایە پرسیاری یاساییەکەت وەکوو نامەی دەنگی بنێرە.\n\n📌 تەنها نامەی دەنگیی تەلەگرام پشتیوانی دەکرێت.")
         elif text == "ℹ️ دەربارەی تۆکێن":
             await about_token(update, context)
-
-        elif text == "📚 پرونده‌های مشهور":
-            await cases_cmd(update, context)
-        elif text == "📚 Famous Cases":
-            await cases_cmd(update, context)
-
+            
         elif text == "📚 پرۆسەی ناودار":
            await cases_cmd(update, context)
 
