@@ -433,10 +433,50 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     }[lang])
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /about_token command: provide information about the token system."""
+    """Show information about the RLC token with image and purchase link."""
     lang = get_lang(context)
-    # Assuming TEXTS contains an entry for "about_token" in different languages
-    await update.message.reply_text(tr("about_token_info", lang), parse_mode=ParseMode.HTML)
+    message = update.effective_message
+
+    # مسیر عکس: reblawcoin.png در همان پوشه فایل bot.py
+    token_img = Path("reblawcoin.png")
+    has_img = token_img.exists()
+
+    # متن چندزبانه با لینک خرید
+    token_texts = {
+        "fa": (
+            "🎉 <b>توکن RebLawCoin (RLC)</b> – اولین ارز دیجیتال با محوریت خدمات حقوقی.\n\n"
+            "📌 اهداف پروژه:\n"
+            "• سرمایه‌گذاری در نوآوری‌های حقوقی\n"
+            "• نهادینه‌سازی عدالت روی بلاک‌چین\n"
+            "• سودآوری پایدار برای سرمایه‌گذاران\n\n"
+            "🛒 <a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>خرید توکن RLC در بلوُم</a>"
+        ),
+        "en": (
+            "🎉 <b>RebLawCoin (RLC)</b> – the first crypto token focused on legal innovation.\n\n"
+            "📌 Project goals:\n"
+            "• Invest in legal tech\n"
+            "• Decentralize justice\n"
+            "• Enable sustainable value for holders\n\n"
+            "🛒 <a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>Buy RLC Token on Bloom</a>"
+        ),
+        "ku": (
+            "🎉 <b>تۆکینی RebLawCoin (RLC)</b> – یەکەم تۆکن بۆ نوێکاری یاسایی.\n\n"
+            "📌 ئامانجی پرۆژە:\n"
+            "• پانگە دان بە هەژماری یاسایی\n"
+            "• دادپەروەرییەکی دەسەڵات‌ناوەندی\n"
+            "• بەهای بەردەوام بۆ هەژمارگیران\n\n"
+            "🛒 <a href='https://t.me/blum/app?startapp=memepadjetton_RLC_JpMH5-ref_1wgcKkl94N'>کڕینی تۆکین لە Bloom</a>"
+        )
+    }
+
+    content = token_texts.get(lang, token_texts["fa"])
+
+    # اگر عکس وجود داشت، اول عکس بفرست
+    if has_img:
+        await message.reply_photo(token_img.open("rb"), caption="📌 RebLawCoin (RLC)", parse_mode=ParseMode.HTML)
+
+    # سپس متن اطلاعات و لینک را بفرست
+    await message.reply_text(content, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
 
 async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /lang command: show language selection keyboard."""
