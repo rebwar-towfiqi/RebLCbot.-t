@@ -339,21 +339,21 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     price_text = {
         "fa": (
             "🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 500,000 تومان\n🏦 شماره کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تون کوین (TON): 1\n👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,800,000\n🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
+            f"💳 کارت بانکی: 300,000 تومان\n🏦 شماره کارت: <code>{bank_card}</code>\n\n"
+            f"💎 تون کوین (TON): 0/5\n👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
+            f"🚀 توکن RLC: 1,000,000\n🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
         ),
         "en": (
             "🔸 One-month subscription price:\n\n"
-            f"💳 Bank (IRR): 500,000 IRR\n🏦 Card Number: <code>{bank_card}</code>\n\n"
-            f"💎 TON Coin (TON): 1\n👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,800,000\n🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
+            f"💳 Bank (IRR): 300,000 IRR\n🏦 Card Number: <code>{bank_card}</code>\n\n"
+            f"💎 TON Coin (TON): 0/5\n👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
+            f"🚀 RLC Token: 1,000,000\n🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
         ),
         "ku": (
             "🔸 نرخی اشتراکی مانگانە:\n\n"
-            f"💳 کارتی بانکی: 500,000 تومان\n🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کوین (TON): 1\n👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
-            f"🚀 تۆکینی RLC: 1,800,000\n🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
+            f"💳 کارتی بانکی: 300,000 تومان\n🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
+            f"💎 تۆن کوین (TON): 0.5\n👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
+            f"🚀 تۆکینی RLC: 1,000,000\n🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
         ),
     }
     await update.message.reply_text(
