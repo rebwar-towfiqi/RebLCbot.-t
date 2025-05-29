@@ -352,7 +352,7 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "ku": (
             "🔸 نرخی اشتراکی مانگانە:\n\n"
             f"💳 کارتی بانکی: 300,000 تومان\n🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کوین (TON): 0.5\n👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
+            f"💎 تۆن کوین (TON): 0/5\n👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
             f"🚀 تۆکینی RLC: 1,000,000\n🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
         ),
     }
@@ -478,6 +478,7 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # سپس متن اطلاعات و لینک را بفرست
     await message.reply_text(content, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
 
+
 async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /lang command: show language selection keyboard."""
     await update.message.reply_text(
@@ -485,19 +486,62 @@ async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("فارسی"), KeyboardButton("English"), KeyboardButton("کوردی")]], one_time_keyboard=True, resize_keyboard=True)
     )
 
+async def case_page_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """جابجایی بین صفحات پرونده‌های مشهور"""
+    query = update.callback_query
+    await query.answer()
+    try:
+        page = int(query.data.split(":")[1])
+    except Exception:
+        page = 0
+    await show_case_page(update, context, page=page)
+
+
 async def cases_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /cases command: display a list of famous cases with inline buttons."""
-    cases = get_famous_cases()
-    if not cases:
-        await update.message.reply_text("❌ پرونده‌ای یافت نشد." if get_lang(context) == "fa" else "❌ No cases found.")
-        return
-    # Create inline button list
-    keyboard = [[InlineKeyboardButton(title, callback_data=f"case:{cid}")] for cid, title in cases]
-    await update.message.reply_text(
-        "📚 فهرست پرونده‌های مشهور:\nبرای مشاهده خلاصه، روی یکی از موارد زیر کلیک کنید:" if get_lang(context) == "fa" else 
-        "📚 Famous Cases:\nClick a case below to see its summary:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    """Handle /cases command: redirect to show first page of famous cases."""
+    await show_case_page(update, context, page=0)
+
+CASES_PER_PAGE = 5  # تعداد پرونده در هر صفحه
+
+async def show_case_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, page: int) -> None:
+    lang = get_lang(context)
+    all_cases = get_famous_cases()
+    total = len(all_cases)
+    pages = (total + CASES_PER_PAGE - 1) // CASES_PER_PAGE
+    page = max(0, min(page, pages - 1))  # محدود کردن بازه صفحه
+
+    # Slice پرونده‌ها برای صفحه فعلی
+    start = page * CASES_PER_PAGE
+    end = start + CASES_PER_PAGE
+    cases = all_cases[start:end]
+
+    # دکمه‌ها
+    buttons = [
+        [InlineKeyboardButton(title, callback_data=f"case:{cid}")]
+        for cid, title in cases
+    ]
+
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("⬅️ قبلی", callback_data=f"case_page:{page - 1}"))
+    if page < pages - 1:
+        nav_buttons.append(InlineKeyboardButton("➡️ بعدی", callback_data=f"case_page:{page + 1}"))
+    if nav_buttons:
+        buttons.append(nav_buttons)
+
+    message = {
+        "fa": f"📚 فهرست پرونده‌های مشهور (صفحه {page + 1} از {pages}):",
+        "en": f"📚 Famous Cases (Page {page + 1} of {pages}):",
+        "ku": f"📚 پرۆسەی ناودار (لاپەڕەی {page + 1} لە {pages}):"
+    }.get(lang, "📚 پرونده‌ها:")
+
+    if isinstance(update_or_query, Update) and update_or_query.message:
+        await update_or_query.message.reply_text(message, reply_markup=InlineKeyboardMarkup(buttons))
+    elif update_or_query.callback_query:
+        await update_or_query.callback_query.edit_message_text(
+            message, reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
 
 # ─── Callback Query Handlers ────────────────────────────────────────────────
 async def case_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -628,6 +672,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
         elif text == "ℹ️ درباره توکن":
             await about_token(update, context)
+
         elif text == "📚 پرونده‌های مشهور":
             await cases_cmd(update, context)
 
@@ -771,6 +816,7 @@ def register_handlers(app: Application) -> None:
 
     app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
     app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"))
+    app.add_handler(CallbackQueryHandler(case_page_callback_handler, pattern=r"^case_page:\d+$"))
 
     # Non-command message handlers (ordered by group to control priority)
 
