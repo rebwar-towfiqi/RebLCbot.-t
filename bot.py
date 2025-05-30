@@ -28,8 +28,26 @@ from psycopg2.pool import SimpleConnectionPool
 from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram import Update
+from telegram.ext import ContextTypes
 
 from texts import TEXTS  # assuming texts.py provides translation strings
+
+
+from functools import wraps
+
+ADMIN_IDS = {1596461417}  # 👈 شناسه تلگرام خودتان را جایگزین کنید
+
+def admin_only(func):
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        if user_id not in ADMIN_IDS:
+            await update.message.reply_text("⛔ این دستور فقط برای مدیر مجاز است.")
+            return
+        return await func(update, context, *args, **kwargs)
+    return wrapper
+
 
 # ─── Global Environment and Logging ──────────────────────────────────────────
 load_dotenv()  # Load environment variables from .env
@@ -373,6 +391,12 @@ async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         price_text.get(lang, price_text["fa"]),
         parse_mode=ParseMode.HTML
+    )
+
+    await update.message.reply_text(
+        price_text.get(lang, price_text["fa"]),
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
     )
 
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -809,6 +833,32 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
         "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری دەنگییەکی تر بنێریت."
     }[lang])
 
+@admin_only
+async def list_users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to list the latest users."""
+    try:
+        rows = get_db().execute("""
+            SELECT user_id, username, expire_at
+            FROM users
+            ORDER BY id DESC
+            LIMIT 10
+        """).fetchall()
+
+        if not rows:
+            await update.message.reply_text("📭 هیچ کاربری ثبت نشده است.")
+            return
+
+        text = "📋 آخرین کاربران ثبت‌شده:\n\n"
+        for uid, uname, expire in rows:
+            text += f"👤 <code>{uid}</code> – @{uname or '---'}\n⏳ تا: {expire or '---'}\n\n"
+
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    
+    except Exception as e:
+        logging.exception("Error in /users")
+        await update.message.reply_text("❌ خطا در دریافت کاربران.")
+
+
 # ─── Register Handlers ──────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
 
@@ -824,6 +874,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("about_token", about_token))
     app.add_handler(CommandHandler("lang", lang_cmd))
     app.add_handler(CommandHandler("cases", cases_cmd))
+    app.add_handler(CommandHandler("users", list_users_cmd))
 
     # Callback query handlers for inline buttons
 
