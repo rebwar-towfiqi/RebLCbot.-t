@@ -332,34 +332,47 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /buy command: show subscription purchase information."""
     lang = get_lang(context)
-    # Fetch payment info from environment (wallet addresses, etc.)
+    
     ton_wallet = getenv_or_die("TON_WALLET_ADDRESS")
     bank_card = getenv_or_die("BANK_CARD_NUMBER")
     rlc_wallet = os.getenv("RLC_WALLET_ADDRESS", "N/A")
+
     price_text = {
         "fa": (
             "🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 300,000 تومان\n🏦 شماره کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تون کوین (TON): 0/5\n👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,000,000\n🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
+            f"💳 کارت بانکی: 300,000 تومان\n"
+            f"🏦 شماره کارت: <code>{bank_card}</code>\n"
+            f"👤 به‌نام: <b>ریبوار توفیقی</b>\n\n"
+            f"💎 تون کوین (TON): 0/5\n"
+            f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
+            f"🚀 توکن RLC: 1,000,000\n"
+            f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
         ),
         "en": (
             "🔸 One-month subscription price:\n\n"
-            f"💳 Bank (IRR): 300,000 IRR\n🏦 Card Number: <code>{bank_card}</code>\n\n"
-            f"💎 TON Coin (TON): 0/5\n👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,000,000\n🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
+            f"💳 Bank Card (IRR): 300,000\n"
+            f"🏦 Card Number: <code>{bank_card}</code>\n"
+            f"👤 Name: <b>Rebwar Tofiqi</b>\n\n"
+            f"💎 TON Coin (TON): 0.5\n"
+            f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
+            f"🚀 RLC Token: 1,000,000\n"
+            f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
         ),
         "ku": (
             "🔸 نرخی اشتراکی مانگانە:\n\n"
-            f"💳 کارتی بانکی: 300,000 تومان\n🏦 ژمارەی کارت: <code>{bank_card}</code>\n\n"
-            f"💎 تۆن کوین (TON): 0/5\n👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
-            f"🚀 تۆکینی RLC: 1,000,000\n🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
+            f"💳 کارتی بانکی: 300,000 تومان\n"
+            f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n"
+            f"👤 ناوی خاوەن کارتەکە: <b>ریبوار توفیقی</b>\n\n"
+            f"💎 تۆن کوین (TON): 0.5\n"
+            f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
+            f"🚀 تۆکینی RLC: 1,000,000\n"
+            f"🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
         ),
     }
+
     await update.message.reply_text(
         price_text.get(lang, price_text["fa"]),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
+        parse_mode=ParseMode.HTML
     )
 
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
