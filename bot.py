@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Generator, Optional
+from database import get_db
 
 # External libraries
 from dotenv import load_dotenv
@@ -833,30 +834,61 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
         "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری دەنگییەکی تر بنێریت."
     }[lang])
 
+
 @admin_only
 async def list_users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Admin command to list the latest users."""
+    """
+    Admin-only handler for the /users command.
+    این تابع آخرین ۱۰ کاربر ثبت‌شده را بر اساس user_id نزولی نمایش می‌دهد.
+    """
     try:
-        rows = get_db().execute("""
-            SELECT user_id, username, expire_at
-            FROM users
-            ORDER BY id DESC
-            LIMIT 10
-        """).fetchall()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
+            # کوئریِ اصلی با ستون‌های user_id, username, first_name, last_name, status
+            cursor.execute("""
+                SELECT user_id, username, first_name, last_name, status
+                  FROM users
+                 ORDER BY user_id DESC
+                 LIMIT 10
+            """)
+            rows = cursor.fetchall()  # لیستی از تاپل‌ها (tuple) برمی‌گردد
+
+        # اگر هیچ کاربری ثبت نشده باشد
         if not rows:
-            await update.message.reply_text("📭 هیچ کاربری ثبت نشده است.")
+            await update.message.reply_text("📭 هیچ کاربری در سیستم ثبت نشده است.")
             return
 
-        text = "📋 آخرین کاربران ثبت‌شده:\n\n"
-        for uid, uname, expire in rows:
-            text += f"👤 <code>{uid}</code> – @{uname or '---'}\n⏳ تا: {expire or '---'}\n\n"
+        # آماده‌سازی متن پاسخ با دسترسی به ستون‌ها از طریق ایندکس عددی
+        text = "📋 <b>آخرین ۱۰ کاربر ثبت‌شده:</b>\n\n"
+        for row in rows:
+            # ترتیب ستون‌ها بر اساس کوئری:
+            # row[0] = user_id
+            # row[1] = username
+            # row[2] = first_name
+            # row[3] = last_name
+            # row[4] = status
+            uid   = row[0]
+            uname = row[1] or "—"
+            fname = row[2] or ""
+            lname = row[3] or ""
+            status = row[4] or "—"
 
+            text += (
+                f"👤 <code>{uid}</code> — @{uname}\n"
+                f"   نام: {fname} {lname}\n"
+                f"   وضعیت: <b>{status}</b>\n\n"
+            )
+
+        # ارسال پیام نهایی با parse_mode=HTML
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    
-    except Exception as e:
-        logging.exception("Error in /users")
-        await update.message.reply_text("❌ خطا در دریافت کاربران.")
+
+    except Exception:
+        # ثبت استک‌تریس کامل در لاگ
+        logger.exception("خطا در اجرای /users")
+        # ارسال پیام عمومی خطا به مدیر
+        await update.message.reply_text("❌ خطا در دریافت لیست کاربران. لطفاً بعداً دوباره تلاش کنید.")
+
 
 
 # ─── Register Handlers ──────────────────────────────────────────────────────
