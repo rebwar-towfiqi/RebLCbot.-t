@@ -151,6 +151,7 @@ def voice_to_text(file_path: str) -> str:
     result = whisper_model.transcribe(file_path)
     return result["text"]
 
+
 # ─── Bot Menus and Language Helper ──────────────────────────────────────────
 def get_main_menu(lang: str):
     menus = {
@@ -240,6 +241,35 @@ def check_and_use_credit(user_id: int) -> bool:
             )
             conn.commit()
         return True
+
+def log_question_answer(user_id: int, question: str, answer: str) -> None:
+    """Log the asked question and its answer into the database."""
+    
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+
+    if USE_PG:
+        assert POOL is not None
+        with POOL.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO questions (user_id, question, answer, asked_at)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (user_id, question, answer, now)
+                )
+            conn.commit()
+    else:
+        with sqlite3.connect(SQLITE_FILE) as conn:
+            conn.execute(
+                """
+                INSERT INTO questions (user_id, question, answer, asked_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, question, answer, now)
+            )
+            conn.commit()
 
 
 # ─── Database Setup (PostgreSQL with SQLite fallback) ───────────────────────
@@ -455,18 +485,24 @@ def save_subscription(user_id: int, days: int = 30) -> None:
     _exec(sql, (expire_at, user_id))
 
 
+from datetime import datetime, timezone
+
 def has_active_subscription(user_id: int) -> bool:
-    """Check if the user has an active subscription (i.e., expire_at in the future and status='approved')."""
+    """Check if the user has an active subscription (expire_at in the future and status='approved')."""
     row = _fetchone(
         f"SELECT expire_at FROM users WHERE user_id={_PLACEHOLDER} AND status='approved'",
         (user_id,)
     )
     if not row or row[0] is None:
         return False
+
     expire_at = row[0]  # In PG this might be a datetime, in SQLite a string
     if isinstance(expire_at, str):
         expire_at = datetime.fromisoformat(expire_at)
-    return expire_at >= datetime.utcnow()
+    if expire_at.tzinfo is None:
+        expire_at = expire_at.replace(tzinfo=timezone.utc)
+
+    return expire_at >= datetime.now(timezone.utc)
 
 
 # If there's an external "famous cases" database for /cases command:
