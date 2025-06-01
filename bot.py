@@ -50,6 +50,86 @@ def admin_only(func):
     return wrapper
 
 
+from datetime import datetime, date
+
+def get_credits(user_id: int) -> int:
+    """دریافت اعتبار باقی‌مانده برای کاربر و ریست روزانه در صورت نیاز"""
+    today = date.today()
+
+    if USE_PG:
+        assert POOL is not None
+        with POOL.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT credits_left, last_reset FROM credits WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+
+                if row:
+                    credits_left, last_reset = row
+                    if last_reset != today:
+                        # ریست روزانه
+                        cur.execute(
+                            "UPDATE credits SET credits_left = 1, last_reset = %s WHERE user_id = %s",
+                            (today, user_id)
+                        )
+                        conn.commit()
+                        return 1
+                    return credits_left
+                else:
+                    cur.execute(
+                        "INSERT INTO credits (user_id, credits_left, last_reset) VALUES (%s, %s, %s)",
+                        (user_id, 1, today)
+                    )
+                    conn.commit()
+                    return 1
+
+    else:
+        with sqlite3.connect(SQLITE_FILE) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT credits_left, last_reset FROM credits WHERE user_id = ?", (user_id,))
+            row = cur.fetchone()
+
+            if row:
+                credits_left, last_reset = row
+                if last_reset != today.isoformat():
+                    cur.execute(
+                        "UPDATE credits SET credits_left = 1, last_reset = ? WHERE user_id = ?",
+                        (today.isoformat(), user_id)
+                    )
+                    conn.commit()
+                    return 1
+                return credits_left
+            else:
+                cur.execute(
+                    "INSERT INTO credits (user_id, credits_left, last_reset) VALUES (?, ?, ?)",
+                    (user_id, 1, today.isoformat())
+                )
+                conn.commit()
+                return 1
+
+
+def decrement_credits(user_id: int) -> None:
+    """کاهش یک واحد از اعتبار کاربر، فقط اگر اعتبار مثبت باشد"""
+    if USE_PG:
+        assert POOL is not None
+        with POOL.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE credits
+                    SET credits_left = credits_left - 1
+                    WHERE user_id = %s AND credits_left > 0
+                """, (user_id,))
+                conn.commit()
+    else:
+        with sqlite3.connect(SQLITE_FILE) as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE credits
+                SET credits_left = credits_left - 1
+                WHERE user_id = ? AND credits_left > 0
+            """, (user_id,))
+            conn.commit()
+
+
 # ─── Global Environment and Logging ──────────────────────────────────────────
 load_dotenv()  # Load environment variables from .env
 logging.basicConfig(
@@ -102,12 +182,14 @@ def tr(key: str, lang: str = "fa", **kwargs) -> str:
     base_text = TEXTS.get(key, {}).get(lang) or TEXTS.get(key, {}).get("fa") or ""
     return base_text.format(**kwargs)
 
+
 def getenv_or_die(key: str) -> str:
     """Get an environment variable or raise an error if it's missing."""
     value = os.getenv(key)
     if not value:
         raise RuntimeError(f"Environment variable {key!r} is missing")
     return value
+
 
 def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
     """Retrieve or initialize the user's language (defaults to 'fa')."""
@@ -130,28 +212,32 @@ def init_db() -> None:
     Creates the necessary tables if they don't exist.
     """
     global POOL, USE_PG
-   
+
     try:
         pg_url = os.getenv("POSTGRES_URL")  # e.g., postgres://user:pass@host:port/db
         if not pg_url:
             raise ValueError("POSTGRES_URL not set")
+
         # Attempt PostgreSQL connection pool
         POOL = SimpleConnectionPool(minconn=1, maxconn=5, dsn=pg_url, connect_timeout=10, sslmode="require")
+
         # Simple test query to verify connection
         with POOL.getconn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1;")
+
         USE_PG = True
         logger.info("✅ Connected to PostgreSQL")
         _setup_schema_pg()
-   
+
     except Exception as exc:
-        # Fallback to SQLite if PostgreSQL fails
+
         logger.warning("PostgreSQL unavailable (%s), switching to SQLite.", exc)
         USE_PG = False
         _setup_schema_sqlite()
-    # Update placeholder after determining DB type
+
     _update_placeholder()
+
 
 def _setup_schema_pg() -> None:
     """Create tables in PostgreSQL if they don't exist."""
@@ -165,6 +251,7 @@ def _setup_schema_pg() -> None:
         receipt_photo_id TEXT,
         expire_at        TIMESTAMP
     );
+
     CREATE TABLE IF NOT EXISTS questions (
         id         SERIAL PRIMARY KEY,
         user_id    BIGINT,
@@ -172,12 +259,21 @@ def _setup_schema_pg() -> None:
         answer     TEXT,
         asked_at   TIMESTAMP DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS credits (
+        user_id      BIGINT PRIMARY KEY,
+        credits_left INTEGER NOT NULL DEFAULT 1,
+        last_reset   DATE
+    );
     """
-    assert POOL is not None  # pool should be set if USE_PG is True
+
+    assert POOL is not None
     with POOL.getconn() as conn:
         with conn.cursor() as cur:
             cur.execute(ddl)
         conn.commit()
+
+
 
 def _setup_schema_sqlite() -> None:
     """Create tables in SQLite if they don't exist."""
@@ -192,6 +288,7 @@ def _setup_schema_sqlite() -> None:
         receipt_photo_id TEXT,
         expire_at        TIMESTAMP
     );
+
     CREATE TABLE IF NOT EXISTS questions (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id    INTEGER,
@@ -199,11 +296,18 @@ def _setup_schema_sqlite() -> None:
         answer     TEXT,
         asked_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS credits (
+        user_id      INTEGER PRIMARY KEY,
+        credits_left INTEGER NOT NULL DEFAULT 1,
+        last_reset   DATE
+    );
     """
-    # Acquire a lock to ensure thread-safety if accessed from multiple threads
+
     with sqlite3.connect(SQLITE_FILE) as conn:
         conn.executescript(ddl)
         conn.commit()
+
 
 _PLACEHOLDER = "?"  # Will use SQLite placeholder by default
 
@@ -211,6 +315,7 @@ def _update_placeholder() -> None:
     """Update the SQL placeholder based on which DB is in use. Call after init_db()."""
     global _PLACEHOLDER
     _PLACEHOLDER = "%s" if USE_PG else "?"
+
 
 @contextmanager
 def get_db():
@@ -235,6 +340,7 @@ def get_db():
         finally:
             conn.close()
 
+
 def _exec(sql: str, params: tuple = ()) -> None:
     """Execute a write operation (INSERT/UPDATE/DELETE) on the database."""
     if USE_PG:
@@ -250,6 +356,7 @@ def _exec(sql: str, params: tuple = ()) -> None:
             conn.execute(sql, params)
             conn.commit()
 
+
 def _fetchone(sql: str, params: tuple = ()) -> Optional[tuple]:
     """Execute a read query (SELECT) and return the first row, or None."""
     if USE_PG:
@@ -263,6 +370,7 @@ def _fetchone(sql: str, params: tuple = ()) -> Optional[tuple]:
         with sqlite3.connect(SQLITE_FILE) as conn:
             cur = conn.execute(sql, params)
             return cur.fetchone()
+
 
 # ─── Database Helper Functions ──────────────────────────────────────────────
 def upsert_user(user_id: int, username: Optional[str], first: Optional[str], last: Optional[str]) -> None:
@@ -280,6 +388,7 @@ def upsert_user(user_id: int, username: Optional[str], first: Optional[str], las
     )
     _exec(sql, (user_id, username, first, last))
 
+
 def save_receipt_request(user_id: int, receipt_data: str) -> None:
     """Save the receipt (photo file_id or text) and mark user status as 'awaiting' for admin review."""
     sql = (
@@ -287,9 +396,11 @@ def save_receipt_request(user_id: int, receipt_data: str) -> None:
     )
     _exec(sql, (receipt_data, user_id))
 
+
 def set_user_status(user_id: int, status: str) -> None:
     """Update the user's status (pending/approved/rejected/awaiting)."""
     _exec(f"UPDATE users SET status={_PLACEHOLDER} WHERE user_id={_PLACEHOLDER}", (status, user_id))
+
 
 
 def save_subscription(user_id: int, days: int = 30) -> None:
@@ -299,6 +410,7 @@ def save_subscription(user_id: int, days: int = 30) -> None:
         f"UPDATE users SET expire_at={_PLACEHOLDER}, status='approved' WHERE user_id={_PLACEHOLDER}"
     )
     _exec(sql, (expire_at, user_id))
+
 
 def has_active_subscription(user_id: int) -> bool:
     """Check if the user has an active subscription (i.e., expire_at in the future and status='approved')."""
@@ -312,6 +424,7 @@ def has_active_subscription(user_id: int) -> bool:
     if isinstance(expire_at, str):
         expire_at = datetime.fromisoformat(expire_at)
     return expire_at >= datetime.utcnow()
+
 
 # If there's an external "famous cases" database for /cases command:
 def get_famous_cases() -> list[tuple[int, str]]:
@@ -327,78 +440,108 @@ def get_famous_cases() -> list[tuple[int, str]]:
         logger.error("Error fetching famous cases: %s", e)
         return []
 
+
 def get_case_summary(case_id: int) -> Optional[str]:
     """Get summary text for a famous case by ID from the local database."""
     with sqlite3.connect("laws.db") as conn:
         row = conn.execute("SELECT summary FROM famous_cases WHERE id=?", (case_id,)).fetchone()
     return row[0] if row else None
 
+
 # ─── Bot Command Handlers ───────────────────────────────────────────────────
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command: greets the user and shows main menu."""
     lang = get_lang(context)
+
     welcome_text = {
-        "fa": "سلام! 👋\nمن <b>ربات حقوقی RebLawBot</b> هستم.\nبا تهیه اشتراک می‌توانید سؤالات حقوقی خود را بپرسید.\nبرای شروع، یکی از گزینه‌های زیر را انتخاب کنید:",
-        "en": "Hello! 👋\nI am <b>RebLawBot</b>, your legal assistant.\nPurchase a subscription to ask legal questions.\nPlease choose an option from the menu:",
-        "ku": "سڵاو! 👋\nمن <b>ڕۆبۆتی یاسایی RebLawBot</b>م.\nبە بەشداربوون دەتوانیت پرسیاری یاساییت بکەیت.\nتکایە یەکێک لە هەڵبژاردەکان دیاری بکە:"
+        "fa": (
+            "سلام! 👋\n"
+            "من <b>ربات حقوقی RebLawBot</b> هستم.\n\n"
+            "📌 روزانه می‌توانید <b>۱ سؤال حقوقی رایگان</b> بپرسید.\n"
+            "💳 با تهیه اشتراک، به امکانات نامحدود و خدمات کامل دسترسی خواهید داشت.\n\n"
+            "برای شروع، یکی از گزینه‌های زیر را انتخاب کنید:"
+        ),
+        "en": (
+            "Hello! 👋\n"
+            "I am <b>RebLawBot</b>, your smart legal assistant.\n\n"
+            "📌 You can ask <b>1 free legal question per day</b>.\n"
+            "💳 Buy a subscription to unlock unlimited access and premium features.\n\n"
+            "Please choose an option from the menu:"
+        ),
+        "ku": (
+            "سڵاو! 👋\n"
+            "من <b>ڕۆبۆتی یاسایی RebLawBot</b>م.\n\n"
+            "📌 ڕۆژانە دەتوانیت <b>یەک پرسیاری بەخۆراو</b> بپرسیت.\n"
+            "💳 بە بەشداریکردن، بە هەموو تایبەتمەندییەکان دەست دەکەویت.\n\n"
+            "تکایە یەکێک لە هەڵبژاردەکان دیاری بکە:"
+        )
     }
+
     await update.message.reply_text(
         welcome_text.get(lang, welcome_text["fa"]),
         reply_markup=get_main_menu(lang),
         parse_mode=ParseMode.HTML
     )
 
+
+
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /buy command: show subscription purchase information."""
     lang = get_lang(context)
-    
+
     ton_wallet = getenv_or_die("TON_WALLET_ADDRESS")
     bank_card = getenv_or_die("BANK_CARD_NUMBER")
     rlc_wallet = os.getenv("RLC_WALLET_ADDRESS", "N/A")
 
-    price_text = {
+    messages = {
         "fa": (
-            "🔸 قیمت اشتراک یک‌ماهه:\n\n"
-            f"💳 کارت بانکی: 300,000 تومان\n"
+            "🛒 <b>خرید اشتراک</b>\n\n"
+            "📌 شما روزانه <b>۱ سؤال حقوقی رایگان</b> در اختیار دارید.\n"
+            "برای دسترسی نامحدود، لطفاً اشتراک تهیه فرمایید:\n\n"
+            "💳 <b>کارت بانکی:</b> ۳۰۰,۰۰۰ تومان\n"
             f"🏦 شماره کارت: <code>{bank_card}</code>\n"
             f"👤 به‌نام: <b>ریبوار توفیقی</b>\n\n"
-            f"💎 تون کوین (TON): 0/5\n"
-            f"👛 آدرس کیف پول: <code>{ton_wallet}</code>\n\n"
-            f"🚀 توکن RLC: 1,000,000\n"
-            f"🔗 آدرس والت RLC: <code>{rlc_wallet}</code>\n"
+            "💎 <b>پرداخت با TON:</b> ۰٫۵ TON\n"
+            f"👛 آدرس کیف پول TON: <code>{ton_wallet}</code>\n\n"
+            "🚀 <b>توکن RLC:</b> ۱٬۰۰۰٬۰۰۰ RLC\n"
+            f"🔗 آدرس کیف پول RLC: <code>{rlc_wallet}</code>\n\n"
+            "✅ پس از پرداخت، از دستور /send_receipt برای ارسال رسید استفاده کنید."
         ),
         "en": (
-            "🔸 One-month subscription price:\n\n"
-            f"💳 Bank Card (IRR): 300,000\n"
+            "🛒 <b>Buy Subscription</b>\n\n"
+            "📌 You can ask <b>1 legal question for free each day</b>.\n"
+            "To unlock unlimited access, please purchase a subscription:\n\n"
+            "💳 <b>Bank Card (IRR):</b> 300,000 Toman\n"
             f"🏦 Card Number: <code>{bank_card}</code>\n"
             f"👤 Name: <b>Rebwar Tofiqi</b>\n\n"
-            f"💎 TON Coin (TON): 0.5\n"
-            f"👛 Wallet Address: <code>{ton_wallet}</code>\n\n"
-            f"🚀 RLC Token: 1,000,000\n"
-            f"🔗 RLC Wallet Address: <code>{rlc_wallet}</code>\n"
+            "💎 <b>TON Payment:</b> 0.5 TON\n"
+            f"👛 Wallet: <code>{ton_wallet}</code>\n\n"
+            "🚀 <b>RLC Token:</b> 1,000,000 RLC\n"
+            f"🔗 Wallet Address: <code>{rlc_wallet}</code>\n\n"
+            "✅ After payment, use /send_receipt to submit your receipt."
         ),
         "ku": (
-            "🔸 نرخی اشتراکی مانگانە:\n\n"
-            f"💳 کارتی بانکی: 300,000 تومان\n"
+            "🛒 <b>کڕینی بەشداریکردن</b>\n\n"
+            "📌 ڕۆژانە دەتوانیت <b>یەک پرسیاری بەخۆراکەت</b> بپرسیت.\n"
+            "بۆ بەدەستهێنانی دەستگیشتی بێ سنوور، تکایە بەشداریکردن بکە:\n\n"
+            "💳 <b>کارتی بانکی:</b> ٣٠٠,٠٠٠ تومان\n"
             f"🏦 ژمارەی کارت: <code>{bank_card}</code>\n"
-            f"👤 ناوی خاوەن کارتەکە: <b>ریبوار توفیقی</b>\n\n"
-            f"💎 تۆن کوین (TON): 0.5\n"
+            f"👤 ناوی خاوەن کارت: <b>ریبوار توفیقی</b>\n\n"
+            "💎 <b>پارەدان بە TON:</b> ٠.٥ TON\n"
             f"👛 ناونیشانی جزدان: <code>{ton_wallet}</code>\n\n"
-            f"🚀 تۆکینی RLC: 1,000,000\n"
-            f"🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n"
+            "🚀 <b>تۆکینی RLC:</b> ١,٠٠٠,٠٠٠ RLC\n"
+            f"🔗 ناونیشانی RLC: <code>{rlc_wallet}</code>\n\n"
+            "✅ دوای پارەدان، فەرمانی /send_receipt بەکاربێنە بۆ ناردنی پسوڵە."
         ),
     }
 
     await update.message.reply_text(
-        price_text.get(lang, price_text["fa"]),
-        parse_mode=ParseMode.HTML
-    )
-
-    await update.message.reply_text(
-        price_text.get(lang, price_text["fa"]),
+        messages[lang],
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True
     )
+
+
 
 async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /send_receipt command: prompt user to send a receipt (photo or text)."""
@@ -407,49 +550,86 @@ async def send_receipt_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data["awaiting_receipt"] = True
     await update.message.reply_text(tr("send_receipt_prompt", lang))  # send_receipt_prompt text from TEXTS
 
+
+
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /status command: inform the user of their subscription status."""
+ 
     uid = update.effective_user.id
     lang = get_lang(context)
-    if has_active_subscription(uid):
-        # Fetch expiration date from DB
-        row = _fetchone("SELECT expire_at FROM users WHERE user_id=" + _PLACEHOLDER, (uid,))
-        expire_at = row[0] if row else None
-        if isinstance(expire_at, str):  # if stored as text in SQLite
-            expire_at = datetime.fromisoformat(expire_at)
-        if expire_at:
-            exp_date = expire_at.strftime("%Y-%m-%d")
-            await update.message.reply_text(
-                tr("status_active", lang).format(date=exp_date),
-                parse_mode=ParseMode.HTML
-            )
+
+    sub_expiry = get_user_subscription_expiry(uid)
+    credits = get_credits(uid)
+
+    if sub_expiry and sub_expiry > datetime.utcnow():
+        remaining = sub_expiry - datetime.utcnow()
+        days = remaining.days
+        msg = {
+            "fa": f"✅ شما اشتراک فعال دارید.\n"
+                  f"🗓️ اعتبار تا <b>{sub_expiry.strftime('%Y-%m-%d')}</b> (تقریباً {days} روز دیگر)\n"
+                  f"📌 همچنین روزانه ۱ اعتبار رایگان نیز فعال است.",
+            "en": f"✅ You have an active subscription.\n"
+                  f"🗓️ Valid until <b>{sub_expiry.strftime('%Y-%m-%d')}</b> (~{days} days left)\n"
+                  f"📌 You also receive 1 free daily credit.",
+            "ku": f"✅ تۆ بەشداریکردنەکی چالاکت هەیە.\n"
+                  f"🗓️ بەردەوامە تا <b>{sub_expiry.strftime('%Y-%m-%d')}</b> ({days} ڕۆژ باقیە)\n"
+                  f"📌 هەروەها ڕۆژانە ١ کرێدیتت دەدرێت."
+        }
     else:
-        await update.message.reply_text(tr("no_sub", lang))
+        msg = {
+            "fa": f"⚠️ شما اشتراک فعال ندارید.\n"
+                  f"📊 اعتبار رایگان باقی‌ماندهٔ امروز: <b>{credits}</b> پرسش\n\n"
+                  f"💡 برای دسترسی کامل می‌توانید اشتراک بخرید با /buy",
+            "en": f"⚠️ You don't have an active subscription.\n"
+                  f"📊 Your free credits left for today: <b>{credits}</b> question(s)\n\n"
+                  f"💡 Use /buy to unlock unlimited access.",
+            "ku": f"⚠️ بەشداریکردنەکی چالاکت نییە.\n"
+                  f"📊 کرێدیتە بەخۆراکەت بۆ ئەمڕۆ: <b>{credits}</b> پرسیار\n\n"
+                  f"💡 فەرمانی /buy بەکاربێنە بۆ بەدەستهێنانی دەستگیشتی."
+        }
+
+    await update.message.reply_text(msg[lang], parse_mode=ParseMode.HTML)
+
+
 
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /ask command: forward the question to OpenAI if user has an active subscription."""
+    """Handle /ask command: forward the question to OpenAI if user has credit."""
     uid = update.effective_user.id
     lang = get_lang(context)
-    if not has_active_subscription(uid):
-        await update.message.reply_text(tr("no_sub", lang))
+
+    # بررسی اعتبار باقی‌مانده
+    credits = get_credits(uid)
+    if credits <= 0:
+        await update.message.reply_text({
+            "fa": "⛔ شما اعتبار فعال برای پرسش ندارید.\n\n📌 روزانه فقط ۱ سؤال رایگان مجاز است.\nبرای مشاهده وضعیت از <b>/credits</b> استفاده کنید.",
+            "en": "⛔ You don't have active credits to ask a question.\n\n📌 Only 1 free legal question is allowed per day.\nUse <b>/credits</b> to check your status.",
+            "ku": "⛔ تۆ کرێدیتت نییە بۆ پرسیار.\n\n📌 ڕۆژانە تەنها یەک پرسیاری بەخۆراو دەکرێت.\nفەرمانی <b>/credits</b> بەکاربێنە.",
+        }.get(lang, "⛔ اعتبار شما کافی نیست. از دستور /credits استفاده کنید."),
+        parse_mode=ParseMode.HTML)
         return
-    # Combine the command arguments into the question text
-    question = " ".join(context.args).strip()
+
+
+    # تبدیل آرگومان‌ها به متن سؤال
+    question = " ".join(context.args).strip() 
     if not question:
-        # Prompt user to provide a question text after /ask
+    
         await update.message.reply_text({
             "fa": "❓ لطفاً سؤال را بعد از دستور بنویسید.",
             "en": "❓ Please write your legal question after the command.",
             "ku": "❓ تکایە پرسیارت لە دوای فەرمانەکە بنوسە."
         }.get(lang, "❓ لطفاً سؤال را بعد از دستور بنویسید."))
         return
-    # Send typing action and get answer from OpenAI
+
+    # ارسال تایپینگ و پرسش به OpenAI
     await update.message.chat.send_action(ChatAction.TYPING)
     try:
         answer_text = await client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
             messages=[
-                {"role": "system", "content": "You are an experienced lawyer. Answer clearly." if lang != "fa" else "You are an experienced Iranian lawyer. Answer in formal Persian."},
+                {
+                    "role": "system",
+                    "content": "You are an experienced Iranian lawyer. Answer in formal Persian." if lang == "fa"
+                    else "You are an experienced lawyer. Answer clearly."
+                },
                 {"role": "user", "content": question}
             ],
             temperature=0.6,
@@ -459,16 +639,23 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except (APIError, RateLimitError, AuthenticationError) as e:
         logger.error("OpenAI API error: %s", e)
         answer = tr("openai_error", lang) if "openai_error" in TEXTS else "❗️Service is unavailable. Please try again later."
-    # Split answer into smaller parts if too long (to respect Telegram message limit)
+
+    # نمایش پاسخ در چند پیام (در صورت طولانی بودن)
     parts = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
     for part in parts:
         await update.message.reply_text(part)
-    # Acknowledge to user that the answer was sent (especially if voice query, see voice handler)
+
+    # ارسال پیام تأیید نهایی
     await update.message.reply_text({
         "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال دیگری بپرسید.",
         "en": "✅ Answer sent. You may ask another question if needed.",
         "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری تر بکەیت."
-    }[lang])
+    }.get(lang))
+
+    # کاهش اعتبار پس از پاسخ موفق
+    decrement_credits(uid)
+
+
 
 async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show information about the RLC token with image and purchase link."""
@@ -517,12 +704,14 @@ async def about_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await message.reply_text(content, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
 
 
+
 async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /lang command: show language selection keyboard."""
     await update.message.reply_text(
         "لطفاً زبان مورد نظر را انتخاب کنید:\nPlease select your preferred language:\nتکایە زمانت هەلبژێرە:",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("فارسی"), KeyboardButton("English"), KeyboardButton("کوردی")]], one_time_keyboard=True, resize_keyboard=True)
     )
+
 
 async def case_page_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """جابجایی بین صفحات پرونده‌های مشهور"""
@@ -540,6 +729,7 @@ async def cases_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await show_case_page(update, context, page=0)
 
 CASES_PER_PAGE = 5  # تعداد پرونده در هر صفحه
+
 
 async def show_case_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, page: int) -> None:
     lang = get_lang(context)
@@ -596,6 +786,7 @@ async def case_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await query.message.reply_text("❌ خطا در دریافت پرونده." if get_lang(context) == "fa" else "❌ Failed to retrieve case summary.")
 
+
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Process inline buttons for approving or rejecting a subscription receipt (admin only)."""
     query = update.callback_query
@@ -633,6 +824,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except Exception as e:
         logger.error("Failed to edit admin message status: %s", e)
 
+
 # ─── Message Handlers (non-command messages) ────────────────────────────────
 async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle language selection from the custom keyboard (text messages 'فارسی', 'English', 'کوردی')."""
@@ -647,6 +839,7 @@ async def lang_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif choice in ["کوردی", "Kurdish"]:
         context.user_data["lang"] = "ku"
         await update.message.reply_text("زمانت کرا بە کوردی." if choice == "کوردی" else "Language set to Kurdish.")
+
 
 async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle an incoming receipt (photo or text message) after /send_receipt was used."""
@@ -687,12 +880,15 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await msg.reply_text("✅ رسید شما ارسال شد. لطفاً منتظر تأیید مدیر بمانید." if get_lang(context) == "fa" else "✅ Your receipt has been sent. Please wait for admin approval.")
 
+
+
+
 async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-  
+ 
     text = (update.message.text or "").strip()
     lang = get_lang(context)
 
-    # دستورات منو بر اساس زبان
+
     if lang == "fa":
         if text == "🛒 خرید اشتراک":
             await buy_cmd(update, context)
@@ -700,17 +896,20 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await send_receipt_cmd(update, context)
         elif text == "⚖️ سؤال حقوقی":
             await update.message.reply_text(
-                "سؤال خود را بعد از /ask بفرستید.\nمثال:\n<code>/ask قانون کار چیست؟</code>",
+                "💬 لطفاً سؤال خود را با دستور /ask ارسال نمایید.\n"
+                "مثال:\n<code>/ask قرارداد مشارکت چه شرایطی دارد؟</code>\n\n"
+                "📌 هر کاربر روزانه ۱ سؤال رایگان دارد.\n"
+                "برای مشاهده اعتبار خود از دستور /credits استفاده کنید.",
                 parse_mode=ParseMode.HTML
             )
-     
+      
         elif text == "🎤 سؤال صوتی":
             await update.message.reply_text(
                 "🎙️ لطفاً سؤال خود را به صورت پیام صوتی (voice) ارسال نمایید.\n\n📌 فقط پیام صوتی تلگرام پشتیبانی می‌شود."
             )
         elif text == "ℹ️ درباره توکن":
             await about_token(update, context)
-
+      
         elif text == "📚 پرونده‌های مشهور":
             await cases_cmd(update, context)
 
@@ -721,10 +920,13 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await send_receipt_cmd(update, context)
         elif text == "⚖️ Legal Question":
             await update.message.reply_text(
-                "Send your question after /ask.\nExample:\n<code>/ask What is labor law?</code>",
+                "💬 Please send your legal question using the /ask command.\n"
+                "Example:\n<code>/ask What are the conditions for a partnership contract?</code>\n\n"
+                "📌 You have 1 free legal question per day.\n"
+                "Use /credits to check your remaining credit.",
                 parse_mode=ParseMode.HTML
             )
-      
+     
         elif text == "🎤 Voice Question":
             await update.message.reply_text(
                 "🎙️ Please send your legal question as a Telegram voice message.\n\n📌 Only Telegram voice messages are supported."
@@ -741,7 +943,10 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await send_receipt_cmd(update, context)
         elif text == "⚖️ پرسیاری یاسایی":
             await update.message.reply_text(
-                "پرسیارەکەت بنێرە لە دوای /ask.\nنموونە:\n<code>/ask یاسای کار چییە؟</code>",
+                "💬 تکایە پرسیارەکەت بنێرە بە فەرمانی /ask.\n"
+                "نموونە:\n<code>/ask پەیوەندی هاوبەش چییە؟</code>\n\n"
+                "📌 ڕۆژانە ١ پرسیاری بەخۆراکەت هەیە.\n"
+                "بۆ بینینی ماوەی کرێدیتت /credits بنووسە.",
                 parse_mode=ParseMode.HTML
             )
         elif text == "🎤 پرسیاری دەنگی":
@@ -890,6 +1095,22 @@ async def list_users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("❌ خطا در دریافت لیست کاربران. لطفاً بعداً دوباره تلاش کنید.")
 
 
+async def credits_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show how many question credits the user has left today."""
+    uid = update.effective_user.id
+    lang = get_lang(context)
+    
+    credits = get_credits(uid)
+
+    messages = {
+        "fa": f"📊 اعتبار باقی‌ماندهٔ شما برای امروز: <b>{credits}</b> پرسش",
+        "en": f"📊 Your remaining credits for today: <b>{credits}</b> question(s)",
+        "ku": f"📊 ماوەی کرێدیتەکانت بۆ ئەمڕۆ: <b>{credits}</b> پرسیار"
+    }
+
+    await update.message.reply_text(messages.get(lang, messages["en"]), parse_mode=ParseMode.HTML)
+
+
 
 # ─── Register Handlers ──────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
@@ -907,7 +1128,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("lang", lang_cmd))
     app.add_handler(CommandHandler("cases", cases_cmd))
     app.add_handler(CommandHandler("users", list_users_cmd))
-
+    app.add_handler(CommandHandler("credits", credits_cmd))
+ 
     # Callback query handlers for inline buttons
 
     app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
