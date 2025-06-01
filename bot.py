@@ -199,6 +199,49 @@ def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
         context.user_data["lang"] = lang
     return lang
 
+
+from datetime import date
+
+def check_and_use_credit(user_id: int) -> bool:
+    """
+    Check if the user has already used their free credit today.
+    If not, insert a new record and return True.
+    If already used, return False.
+    """
+    today = date.today()
+    if USE_PG:
+        assert POOL is not None
+        with POOL.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM credits WHERE user_id = %s AND used_at = %s;",
+                    (user_id, today)
+                )
+                if cur.fetchone():
+                    return False
+                cur.execute(
+                    "INSERT INTO credits (user_id, used_at) VALUES (%s, %s);",
+                    (user_id, today)
+                )
+            conn.commit()
+        return True
+    else:
+        with sqlite3.connect(SQLITE_FILE) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT 1 FROM credits WHERE user_id = ? AND used_at = ?;",
+                (user_id, today)
+            )
+            if cur.fetchone():
+                return False
+            cur.execute(
+                "INSERT INTO credits (user_id, used_at) VALUES (?, ?);",
+                (user_id, today)
+            )
+            conn.commit()
+        return True
+
+
 # ─── Database Setup (PostgreSQL with SQLite fallback) ───────────────────────
 SQLITE_FILE = Path("users.db")
 POOL: Optional[SimpleConnectionPool] = None
@@ -446,6 +489,32 @@ def get_case_summary(case_id: int) -> Optional[str]:
     with sqlite3.connect("laws.db") as conn:
         row = conn.execute("SELECT summary FROM famous_cases WHERE id=?", (case_id,)).fetchone()
     return row[0] if row else None
+
+
+def get_user_subscription_expiry(user_id: int) -> Optional[datetime]:
+    """
+    Retrieve the expiration datetime of the user's subscription from the database.
+    Returns None if the user is not subscribed.
+    """
+    query = "SELECT expire_at FROM users WHERE user_id = ?"
+    if USE_PG:
+        query = "SELECT expire_at FROM users WHERE user_id = %s"
+
+    try:
+        if USE_PG:
+            assert POOL is not None
+            with POOL.getconn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (user_id,))
+                    row = cur.fetchone()
+        else:
+            with sqlite3.connect(SQLITE_FILE) as conn:
+                row = conn.execute(query, (user_id,)).fetchone()
+        if row and row[0]:
+            return datetime.fromisoformat(str(row[0]))
+    except Exception as e:
+        logger.error("Error in get_user_subscription_expiry: %s", e)
+    return None
 
 
 # ─── Bot Command Handlers ───────────────────────────────────────────────────
@@ -968,6 +1037,7 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # else:
     #     await update.message.reply_text("I'm not sure how to respond to that. Use /help for commands.")
 
+
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming voice messages (convert to text and answer if subscribed)."""
     uid = update.effective_user.id
@@ -1096,20 +1166,55 @@ async def list_users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def credits_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show how many question credits the user has left today."""
+    """Handle /credits command: show user's remaining question credits and subscription status."""
     uid = update.effective_user.id
     lang = get_lang(context)
-    
+
     credits = get_credits(uid)
+    expire_at = get_user_subscription_expiry(uid)
+    now = datetime.now()
 
-    messages = {
-        "fa": f"📊 اعتبار باقی‌ماندهٔ شما برای امروز: <b>{credits}</b> پرسش",
-        "en": f"📊 Your remaining credits for today: <b>{credits}</b> question(s)",
-        "ku": f"📊 ماوەی کرێدیتەکانت بۆ ئەمڕۆ: <b>{credits}</b> پرسیار"
-    }
+    # آیا اشتراک فعال است؟
+    is_subscribed = expire_at is not None and expire_at > now
 
-    await update.message.reply_text(messages.get(lang, messages["en"]), parse_mode=ParseMode.HTML)
+    if credits > 0:
+        msg = {
+            "fa": (
+                "✅ شما <b>۱ سؤال رایگان</b> برای امروز دارید.\n"
+                f"{'📅 اشتراک شما فعال است تا تاریخ ' + expire_at.strftime('%Y-%m-%d') if is_subscribed else 'ℹ️ شما اشتراک فعال ندارید.'}"
+            ),
+            "en": (
+                "✅ You have <b>1 free legal question</b> remaining today.\n"
+                f"{'📅 Your subscription is active until ' + expire_at.strftime('%Y-%m-%d') if is_subscribed else 'ℹ️ You don’t have an active subscription.'}"
+            ),
+            "ku": (
+                "✅ تۆ <b>یەک پرسیاری بەخۆراو</b>ت هەیە بۆ ئەمڕۆ.\n"
+                f"{'📅 بەشداریکردنەکەت چالاکە تا ' + expire_at.strftime('%Y-%m-%d') if is_subscribed else 'ℹ️ بەشداریکردنی چالاک نییە.'}"
+            ),
+        }
+    else:
+        msg = {
+            "fa": (
+                "⛔ شما امروز از سؤال رایگان استفاده کرده‌اید.\n"
+                f"{'📅 اشتراک شما فعال است تا تاریخ ' + expire_at.strftime('%Y-%m-%d') if is_subscribed else 'ℹ️ شما اشتراک فعال ندارید.'}\n\n"
+                "📌 می‌توانید فردا دوباره سؤال رایگان بپرسید یا اشتراک تهیه کنید."
+            ),
+            "en": (
+                "⛔ You’ve used your free legal question today.\n"
+                f"{'📅 Your subscription is active until ' + expire_at.strftime('%Y-%m-%d') if is_subscribed else 'ℹ️ You don’t have an active subscription.'}\n\n"
+                "📌 You can ask again tomorrow or purchase a subscription."
+            ),
+            "ku": (
+                "⛔ تۆ پێشتر پرسیاری بەخۆراوی ئەمڕۆت بەکارهێنا.\n"
+                f"{'📅 بەشداریکردنەکەت چالاکە تا ' + expire_at.strftime('%Y-%m-%d') if is_subscribed else 'ℹ️ بەشداریکردنی چالاک نییە.'}\n\n"
+                "📌 دەتوانیت سبەی پرسیاری تر بکەیت یان بەشداریکردن بکەیت."
+            ),
+        }
 
+    await update.message.reply_text(
+        msg.get(lang, msg["fa"]),
+        parse_mode=ParseMode.HTML
+    )
 
 
 # ─── Register Handlers ──────────────────────────────────────────────────────
