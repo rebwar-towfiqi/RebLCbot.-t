@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import re
 
 import tempfile
 
@@ -695,35 +696,29 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     await update.message.reply_text(msg[lang], parse_mode=ParseMode.HTML)
 
+logger = logging.getLogger(__name__)
 
+def find_law_article(article_number: int, law_name: str) -> str:
+    """جستجو در پایگاه داده برای یافتن متن یک ماده خاص از یک قانون مشخص"""
+    try:
+        with sqlite3.connect("laws.db") as conn:
+            row = conn.execute(
+                "SELECT text FROM laws WHERE number=? AND law LIKE ? COLLATE NOCASE",
+                (article_number, f"%{law_name}%")
+            ).fetchone()
+            return row[0] if row else ""
+    except Exception as e:
+        logger.error("Error in find_law_article: %s", e)
+        return ""
 
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /ask command: forward the question to OpenAI if user has credit or active subscription."""
     uid = update.effective_user.id
     lang = get_lang(context)
-
-    # بررسی وضعیت اشتراک
-    if has_active_subscription(uid):
-        is_subscriber = True
-    else:
-        is_subscriber = False
-
-    # بررسی اعتبار فقط برای کاربران بدون اشتراک
-    if not is_subscriber:
-        credits = get_credits(uid)
-        if credits <= 0:
-            await update.message.reply_text({
-                "fa": "⛔ شما اعتبار فعال برای پرسش ندارید.\n\n📌 روزانه فقط ۱ سؤال رایگان مجاز است.\nبرای مشاهده وضعیت از <b>/credits</b> استفاده کنید.",
-                "en": "⛔ You don't have active credits to ask a question.\n\n📌 Only 1 free legal question is allowed per day.\nUse <b>/credits</b> to check your status.",
-                "ku": "⛔ تۆ کرێدیتت نییە بۆ پرسیار.\n\n📌 ڕۆژانە تەنها یەک پرسیاری بەخۆراو دەکرێت.\nفەرمانی <b>/credits</b> بەکاربێنە.",
-            }.get(lang, "⛔ اعتبار شما کافی نیست. از دستور /credits استفاده کنید."),
-            parse_mode=ParseMode.HTML)
-            return
-
-    # گرفتن متن سؤال از آرگومان‌ها
     question = " ".join(context.args).strip()
+
+    # No question provided
     if not question:
-    
         await update.message.reply_text({
             "fa": "❓ لطفاً سؤال را بعد از دستور بنویسید.",
             "en": "❓ Please write your legal question after the command.",
@@ -731,8 +726,37 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         }.get(lang, "❓ لطفاً سؤال را بعد از دستور بنویسید."))
         return
 
-    # ارسال تایپینگ و پرسش به OpenAI
+    # Try to detect legal article request
+    article_match = re.search(r"(?i)(ماده\s+(\d+)\s+قانون\s+([\w\s]+))", question)
+    article_text = ""
+    if article_match:
+        article_number = article_match.group(2)
+        law_name = article_match.group(3).strip()
+        article_text = find_law_article(int(article_number), law_name)
+        if article_text:
+            await update.message.reply_text(f"📘 {article_match.group(1)}:\n\n{article_text}")
+
+    # Check user access (subscription or credits)
+    is_subscriber = has_active_subscription(uid)
+    if not is_subscriber:
+        credits = get_credits(uid)
+        if credits <= 0:
+            await update.message.reply_text({
+                "fa": "⛔ شما اعتبار فعال برای پرسش ندارید.\n\n📌 روزانه فقط ۱ سؤال رایگان مجاز است.\nبرای مشاهده وضعیت از <b>/credits</b> استفاده کنید.",
+                "en": "⛔ You don't have active credits to ask a question.\n\n📌 Only 1 free legal question is allowed per day.\nUse <b>/credits</b> to check your status.",
+                "ku": "⛔ تۆ کرێدیتت نییە بۆ پرسیار.\n\n📌 ڕۆژانە تەنها یەک پرسیاری بەخۆراو دەکرێت.\nفەرمانی <b>/credits</b> بەکاربێنە.",
+            }.get(lang),
+            parse_mode=ParseMode.HTML)
+            return
+
+    # If question is only a request for article text, skip OpenAI
+    if article_text and len(question.strip().split()) < 6:
+        return  # don't send to OpenAI unless it's a full legal question
+
+
+
     await update.message.chat.send_action(ChatAction.TYPING)
+
     try:
         answer_text = await client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
@@ -752,21 +776,22 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("OpenAI API error: %s", e)
         answer = tr("openai_error", lang) if "openai_error" in TEXTS else "❗️Service is unavailable. Please try again later."
 
-    # ارسال پاسخ در چند پیام در صورت نیاز
-    parts = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
-    for part in parts:
+    # Send answer in parts if long
+    for part in [answer[i:i+4000] for i in range(0, len(answer), 4000)]:
         await update.message.reply_text(part)
 
-    # پیام نهایی
+
     await update.message.reply_text({
-        "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال دیگری بپرسید.",
-        "en": "✅ Answer sent. You may ask another question if needed.",
-        "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری تر بکەیت."
+        "fa": "✅ پاسخ ارسال شد.",
+        "en": "✅ Answer sent.",
+        "ku": "✅ وەڵام نێردرا."
     }.get(lang))
 
-    # فقط در حالت کاربر غیرمشترک، اعتبار را کم می‌کنیم
+
     if not is_subscriber:
         decrement_credits(uid)
+
+
 
 
 
