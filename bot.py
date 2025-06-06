@@ -505,6 +505,7 @@ def has_active_subscription(user_id: int) -> bool:
     return expire_at >= datetime.now(timezone.utc)
 
 
+
 # If there's an external "famous cases" database for /cases command:
 def get_famous_cases() -> list[tuple[int, str]]:
     """
@@ -697,24 +698,30 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /ask command: forward the question to OpenAI if user has credit."""
+    """Handle /ask command: forward the question to OpenAI if user has credit or active subscription."""
     uid = update.effective_user.id
     lang = get_lang(context)
 
-    # بررسی اعتبار باقی‌مانده
-    credits = get_credits(uid)
-    if credits <= 0:
-        await update.message.reply_text({
-            "fa": "⛔ شما اعتبار فعال برای پرسش ندارید.\n\n📌 روزانه فقط ۱ سؤال رایگان مجاز است.\nبرای مشاهده وضعیت از <b>/credits</b> استفاده کنید.",
-            "en": "⛔ You don't have active credits to ask a question.\n\n📌 Only 1 free legal question is allowed per day.\nUse <b>/credits</b> to check your status.",
-            "ku": "⛔ تۆ کرێدیتت نییە بۆ پرسیار.\n\n📌 ڕۆژانە تەنها یەک پرسیاری بەخۆراو دەکرێت.\nفەرمانی <b>/credits</b> بەکاربێنە.",
-        }.get(lang, "⛔ اعتبار شما کافی نیست. از دستور /credits استفاده کنید."),
-        parse_mode=ParseMode.HTML)
-        return
+    # بررسی وضعیت اشتراک
+    if has_active_subscription(uid):
+        is_subscriber = True
+    else:
+        is_subscriber = False
 
+    # بررسی اعتبار فقط برای کاربران بدون اشتراک
+    if not is_subscriber:
+        credits = get_credits(uid)
+        if credits <= 0:
+            await update.message.reply_text({
+                "fa": "⛔ شما اعتبار فعال برای پرسش ندارید.\n\n📌 روزانه فقط ۱ سؤال رایگان مجاز است.\nبرای مشاهده وضعیت از <b>/credits</b> استفاده کنید.",
+                "en": "⛔ You don't have active credits to ask a question.\n\n📌 Only 1 free legal question is allowed per day.\nUse <b>/credits</b> to check your status.",
+                "ku": "⛔ تۆ کرێدیتت نییە بۆ پرسیار.\n\n📌 ڕۆژانە تەنها یەک پرسیاری بەخۆراو دەکرێت.\nفەرمانی <b>/credits</b> بەکاربێنە.",
+            }.get(lang, "⛔ اعتبار شما کافی نیست. از دستور /credits استفاده کنید."),
+            parse_mode=ParseMode.HTML)
+            return
 
-    # تبدیل آرگومان‌ها به متن سؤال
-    question = " ".join(context.args).strip() 
+    # گرفتن متن سؤال از آرگومان‌ها
+    question = " ".join(context.args).strip()
     if not question:
     
         await update.message.reply_text({
@@ -745,20 +752,21 @@ async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("OpenAI API error: %s", e)
         answer = tr("openai_error", lang) if "openai_error" in TEXTS else "❗️Service is unavailable. Please try again later."
 
-    # نمایش پاسخ در چند پیام (در صورت طولانی بودن)
+    # ارسال پاسخ در چند پیام در صورت نیاز
     parts = [answer[i:i+4000] for i in range(0, len(answer), 4000)]
     for part in parts:
         await update.message.reply_text(part)
 
-    # ارسال پیام تأیید نهایی
+    # پیام نهایی
     await update.message.reply_text({
         "fa": "✅ پاسخ ارسال شد. در صورت نیاز می‌توانید سؤال دیگری بپرسید.",
         "en": "✅ Answer sent. You may ask another question if needed.",
         "ku": "✅ وەڵام نێردرا. دەتوانیت پرسیاری تر بکەیت."
     }.get(lang))
 
-    # کاهش اعتبار پس از پاسخ موفق
-    decrement_credits(uid)
+    # فقط در حالت کاربر غیرمشترک، اعتبار را کم می‌کنیم
+    if not is_subscriber:
+        decrement_credits(uid)
 
 
 
