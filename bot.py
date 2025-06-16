@@ -16,6 +16,8 @@ import re
 
 import tempfile
 
+DB_PATH = "data/reblaw.db"  # ← مسیر دیتابیس SQLite شما
+
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
@@ -590,6 +592,200 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode=ParseMode.HTML
     )
 
+
+quiz_questions = [
+    {
+        "id": 1,
+        "question": "اگر شخصی مال غیر را بفروشد، چه جرمی مرتکب شده است؟",
+        "options": ["کلاهبرداری", "خیانت در امانت", "فروش مال غیر", "سرقت"],
+        "answer_index": 2,
+    },
+    {
+        "id": 2,
+        "question": "ماده ۱۰ قانون مدنی به چه اصلی اشاره دارد؟",
+        "options": ["لزوم قراردادها", "اثر قرارداد نسبت به اشخاص ثالث", "تعارض منافع", "فسخ عقد"],
+        "answer_index": 0,
+    }
+]
+
+# مسیر دیتابیس SQLite
+DB_PATH = "data/reblaw.db"  # مسیر مناسب با پروژه شما
+
+async def play_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    today = datetime.date.today().isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+
+    # ایجاد جدول در صورت نبود
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_scores (
+            telegram_id INTEGER PRIMARY KEY,
+            score INTEGER DEFAULT 0,
+            last_played TEXT
+        )
+    """)
+
+    # اتصال به دیتابیس
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # ایجاد جدول در صورت نبود
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_scores (
+            telegram_id INTEGER PRIMARY KEY,
+            score INTEGER DEFAULT 0,
+            last_played TEXT
+        )
+    """)
+
+    # گرفتن اطلاعات کاربر
+    cursor.execute("SELECT score, last_played FROM user_scores WHERE telegram_id = ?", (user_id,))
+    row = cursor.fetchone()
+
+    if row:
+        score, last_played = row
+        if last_played == today:
+            await update.message.reply_text("📌 شما امروز بازی کرده‌اید. لطفاً فردا دوباره امتحان کنید.")
+            conn.close()
+            return
+    else:
+        cursor.execute("INSERT INTO user_scores (telegram_id) VALUES (?)", (user_id,))
+        conn.commit()
+
+    # انتخاب یک سؤال تصادفی
+    import random
+    question = random.choice(quiz_questions)
+    context.user_data["current_question"] = question  # ذخیره برای بررسی جواب
+
+    # ساخت دکمه‌ها
+    keyboard = [
+        [InlineKeyboardButton(opt, callback_data=f"quiz:{i}")]
+        for i, opt in enumerate(question["options"])
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(f"🧠 سوال:\n\n{question['question']}", reply_markup=reply_markup)
+    conn.close()
+
+
+async def quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    if "current_question" not in context.user_data:
+        await query.edit_message_text("❗ پرسشی برای شما فعال نیست.")
+        return
+
+    question = context.user_data["current_question"]
+    selected = int(query.data.split(":")[1])
+    correct = question["answer_index"]
+    is_correct = selected == correct
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    if is_correct:
+        cursor.execute(
+            "UPDATE user_scores SET score = score + 10, last_played = ? WHERE telegram_id = ?",
+            (datetime.date.today().isoformat(), user_id)
+        )
+        response = "✅ پاسخ درست بود! ۱۰ امتیاز گرفتید."
+    else:
+        cursor.execute(
+            "UPDATE user_scores SET last_played = ? WHERE telegram_id = ?",
+            (datetime.date.today().isoformat(), user_id)
+        )
+        response = f"❌ پاسخ نادرست بود. جواب درست: {question['options'][correct]}"
+
+    conn.commit()
+    conn.close()
+
+    await query.edit_message_text(response)
+
+async def redeem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # بررسی وجود جدول امتیازات
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_scores (
+            telegram_id INTEGER PRIMARY KEY,
+            score INTEGER DEFAULT 0,
+            last_played TEXT
+        )
+    """)
+
+    # بررسی وجود جدول اشتراک‌ها
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            telegram_id INTEGER PRIMARY KEY,
+            expires_at TEXT
+        )
+    """)
+
+    # گرفتن امتیاز فعلی کاربر
+    cursor.execute("SELECT score FROM user_scores WHERE telegram_id = ?", (user_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        await update.message.reply_text("❌ شما هنوز هیچ امتیازی ندارید.")
+        conn.close()
+        return
+
+    score = row[0]
+
+    if score < 100:
+        await update.message.reply_text(f"📉 امتیاز شما {score} است. برای دریافت اشتراک حداقل ۱۰۰ امتیاز لازم است.")
+        conn.close()
+        return
+
+    # کم کردن امتیاز و افزودن اشتراک ۷ روزه
+    cursor.execute("UPDATE user_scores SET score = score - 100 WHERE telegram_id = ?", (user_id,))
+
+    new_expiry = datetime.now() + timedelta(days=7)
+    cursor.execute(
+        "INSERT OR REPLACE INTO subscriptions (telegram_id, expires_at) VALUES (?, ?)",
+        (user_id, new_expiry.isoformat())
+    )
+
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text("✅ تبریک! اشتراک ۷ روزه برای شما فعال شد و ۱۰۰ امتیاز کسر گردید.")
+
+
+async def score_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # بررسی وجود جدول امتیاز
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_scores (
+            telegram_id INTEGER PRIMARY KEY,
+            score INTEGER DEFAULT 0,
+            last_played TEXT
+        )
+    """)
+
+    # خواندن امتیاز
+    cursor.execute("SELECT score FROM user_scores WHERE telegram_id = ?", (user_id,))
+    row = cursor.fetchone()
+
+    conn.close()
+
+    if not row:
+        await update.message.reply_text("📉 شما هنوز هیچ امتیازی ندارید.")
+    else:
+        score = row[0]
+        await update.message.reply_text(f"🎯 امتیاز فعلی شما: {score} امتیاز")
 
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1303,13 +1499,17 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("cases", cases_cmd))
     app.add_handler(CommandHandler("users", list_users_cmd))
     app.add_handler(CommandHandler("credits", credits_cmd))
- 
+    app.add_handler(CommandHandler("redeem", redeem_cmd))
+    app.add_handler(CommandHandler("score", score_cmd))
+
     # Callback query handlers for inline buttons
 
     app.add_handler(CallbackQueryHandler(case_callback_handler, pattern=r"^case:\d+$"))
     app.add_handler(CallbackQueryHandler(callback_handler, pattern=r"^(approve|reject):\d+$"))
     app.add_handler(CallbackQueryHandler(case_page_callback_handler, pattern=r"^case_page:\d+$"))
-
+    app.add_handler(CommandHandler("play", play_cmd))
+    app.add_handler(CallbackQueryHandler(quiz_callback, pattern=r"^quiz:\d+$"))
+    
     # Non-command message handlers (ordered by group to control priority)
 
     app.add_handler(MessageHandler(filters.Regex("^(فارسی|English|کوردی)$"), lang_text_router), group=0)
