@@ -3,14 +3,17 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from subprocess import _FILE
 from typing import Iterator, List, Tuple, Optional
 import logging
 
+DB_FILE = "laws.db"
 logger = logging.getLogger(__name__)
 
 # مسیر فایل SQLite شما
 DB_PATH = Path("users.db")
 DB_PATH.touch(exist_ok=True)
+DB_PATH = Path("rlc_scores.db")
 
 # ---------------------------------------------------------------------------#
 # ۱. اتصال با Row Factory                                                     #
@@ -104,3 +107,43 @@ def list_pending_users() -> List[Tuple]:
               FROM users
              WHERE status = 'pending'
         """).fetchall()
+
+def ensure_table_exists():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS rlc_scores (
+            user_id INTEGER PRIMARY KEY,
+            score INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def add_rlc_score(user_id: int, points: int):
+    ensure_table_exists()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO rlc_scores (user_id, score) VALUES (?, 0)", (user_id,))
+    c.execute("UPDATE rlc_scores SET score = score + ? WHERE user_id = ?", (points, user_id))
+    conn.commit()
+    conn.close()
+
+def get_rlc_score(user_id: int) -> int:
+    ensure_table_exists()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT score FROM rlc_scores WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+def create_score_table():
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS rlc_scores (
+                user_id INTEGER PRIMARY KEY,
+                score INTEGER DEFAULT 0
+            )
+        ''')
+
