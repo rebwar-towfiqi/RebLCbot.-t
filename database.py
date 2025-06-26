@@ -147,3 +147,9 @@ def create_score_table():
             )
         ''')
 
+def add_score(user_id: int, amount: int = 1) -> None:
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(
+            "INSERT INTO rlc_scores (user_id, score) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET score = score + ?",
+            (user_id, amount, amount)
+        )
