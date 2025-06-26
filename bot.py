@@ -1556,21 +1556,19 @@ async def handle_decision_callback(update: Update, context: ContextTypes.DEFAULT
     uid = int(uid_match.group(1))
 
     if data.startswith("approve_"):
-        # ✅ افزودن امتیاز RLC
-        add_rlc_score(user_id=uid, points=5)
-
+        # افزایش امتیاز RLC
+        add_score(uid, amount=1)
         await context.bot.send_message(
             chat_id=uid,
-            text="✅ دفاعیه شما توسط مدیر تأیید شد. ممنون از مشارکت شما!\n💎 شما ۵ امتیاز RLC دریافت کردید."
+            text="✅ دفاعیه شما توسط مدیر تأیید شد و یک امتیاز RLC دریافت کردید!"
         )
-        await query.edit_message_text("دفاعیه تأیید شد و ۵ امتیاز RLC به کاربر داده شد.")
-        
+        await query.edit_message_text("✅ دفاعیه تأیید شد، امتیاز اضافه شد و به کاربر اطلاع داده شد.")
     elif data.startswith("reject_"):
         await context.bot.send_message(
             chat_id=uid,
             text="❌ دفاعیه شما توسط مدیر رد شد. لطفاً در نوبت بعدی با دقت بیشتری تلاش کنید."
         )
-        await query.edit_message_text("دفاعیه رد شد و به کاربر اطلاع داده شد.")
+        await query.edit_message_text("🚫 دفاعیه رد شد و به کاربر اطلاع داده شد.")
     else:
         await query.edit_message_text("❌ تصمیم ناشناخته.")
 
