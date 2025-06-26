@@ -40,6 +40,8 @@ from texts import TEXTS  # assuming texts.py provides translation strings
 
 from functools import wraps
 
+import json
+
 ADMIN_IDS = {1596461417}  # 👈 شناسه تلگرام خودتان را جایگزین کنید
 
 def admin_only(func):
@@ -1481,6 +1483,34 @@ async def credits_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parse_mode=ParseMode.HTML
     )
 
+async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """داده ارسال‌شده از WebApp (بازی) را پردازش و برای مدیر ارسال می‌کند."""
+    if not update.effective_user or not update.effective_user.id:
+        return
+
+    uid = update.effective_user.id
+    webapp_data = update.effective_message.web_app_data.data
+
+    try:
+        parsed = json.loads(webapp_data)
+        if parsed.get("type") == "submit_argument":
+            case_id = parsed.get("caseId")
+            role = parsed.get("role")
+            text = parsed.get("text")
+
+            message = (
+                f"🧠 <b>دفاعیه جدید از بازی</b>\n"
+                f"👤 کاربر: <code>{uid}</code>\n"
+                f"📂 پرونده: {case_id}\n"
+                f"🎭 نقش: {role}\n"
+                f"📝 متن:\n{text}"
+            )
+            await context.bot.send_message(chat_id=ADMIN_IDS, text=message, parse_mode="HTML")
+            await update.effective_message.reply_text("✅ دفاعیه شما با موفقیت ارسال شد. منتظر بررسی باشید.")
+
+    except Exception as e:
+        await update.effective_message.reply_text("❌ خطا در پردازش داده ارسال‌شده.")
+        print(f"Error parsing WebAppData: {e}")
 
 # ─── Register Handlers ──────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
@@ -1516,9 +1546,10 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), handle_receipt), group=1)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=2)
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=3)
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
 
 # ─── Main Entrypoint ───────────────────────────────────────────────────────
-
+  
 def main() -> None:
     """Initialize the bot and start polling for updates."""
     bot_token = os.getenv("BOT_TOKEN")
