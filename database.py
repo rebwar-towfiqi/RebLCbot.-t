@@ -3,11 +3,12 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from subprocess import DB_FILE
 from typing import Iterator, List, Tuple, Optional
 import logging
 
 DB_FILE = "laws.db"
+DB_FILE = "game_scores.db"  # یا نام دقیق فایل دیتابیس‌تان
+
 logger = logging.getLogger(__name__)
 
 # مسیر فایل SQLite شما
