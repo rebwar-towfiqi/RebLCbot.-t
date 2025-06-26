@@ -13,7 +13,7 @@ import logging
 import os
 import sqlite3
 import re
-
+import json
 import tempfile
 
 DB_PATH = "data/reblaw.db"  # ← مسیر دیتابیس SQLite شما
@@ -39,8 +39,10 @@ from texts import TEXTS  # assuming texts.py provides translation strings
 
 
 from functools import wraps
+from database import add_rlc_score  # مطمئن شو این تابع را در db.py ساختی
+from database import create_score_table
+create_score_table()
 
-import json
 
 ADMIN_IDS = {1596461417}  # 👈 شناسه تلگرام خودتان را جایگزین کنید
 
@@ -558,6 +560,20 @@ def get_user_subscription_expiry(user_id: int) -> Optional[datetime]:
         logger.error("Error in get_user_subscription_expiry: %s", e)
     return None
 
+def add_rlc_score(user_id: int, points: int):
+    conn = sqlite3.connect("your_database_file.db")  # یا اتصال PostgreSQL
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat()
+
+    cursor.execute("""
+        INSERT INTO rlc_scores (user_id, total_points, last_updated)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id)
+        DO UPDATE SET total_points = total_points + ?, last_updated = ?;
+    """, (user_id, points, now, points, now))
+
+    conn.commit()
+    conn.close()
 
 # ─── Bot Command Handlers ───────────────────────────────────────────────────
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1483,16 +1499,21 @@ async def credits_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parse_mode=ParseMode.HTML
     )
 
+
 async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """داده ارسال‌شده از WebApp (بازی) را پردازش و برای مدیر ارسال می‌کند."""
     if not update.effective_user or not update.effective_user.id:
         return
 
     uid = update.effective_user.id
-    webapp_data = update.effective_message.web_app_data.data
+    webapp_data = getattr(update.effective_message, "web_app_data", None)
+
+    if not webapp_data or not webapp_data.data:
+        logger.warning("⛔️ No web_app_data received.")
+        return
 
     try:
-        parsed = json.loads(webapp_data)
+        parsed = json.loads(webapp_data.data)
         if parsed.get("type") == "submit_argument":
             case_id = parsed.get("caseId")
             role = parsed.get("role")
@@ -1505,12 +1526,54 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"🎭 نقش: {role}\n"
                 f"📝 متن:\n{text}"
             )
-            await context.bot.send_message(chat_id=ADMIN_IDS, text=message, parse_mode="HTML")
+
+            for admin_id in ADMIN_IDS:
+                await context.bot.send_message(chat_id=admin_id, text=message, parse_mode="HTML")
+
             await update.effective_message.reply_text("✅ دفاعیه شما با موفقیت ارسال شد. منتظر بررسی باشید.")
+        else:
+            logger.info(f"⚠️ Unknown WebApp data type: {parsed.get('type')}")
+    except Exception as e:
+        logger.error(f"❌ خطا در پردازش web_app_data: {e}")
+        await update.effective_message.reply_text("⚠️ خطایی در پردازش داده‌ها رخ داد.")
 
     except Exception as e:
         await update.effective_message.reply_text("❌ خطا در پردازش داده ارسال‌شده.")
         print(f"Error parsing WebAppData: {e}")
+
+
+async def handle_decision_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """پردازش تصمیم مدیر (پذیرش یا رد دفاعیه ارسال‌شده از WebApp)."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    uid_match = re.search(r"user_(\d+)", data)
+    if not uid_match:
+        await query.edit_message_text("❌ شناسه کاربر نامعتبر است.")
+        return
+
+    uid = int(uid_match.group(1))
+
+    if data.startswith("approve_"):
+        # ✅ افزودن امتیاز RLC
+        add_rlc_score(user_id=uid, points=5)
+
+        await context.bot.send_message(
+            chat_id=uid,
+            text="✅ دفاعیه شما توسط مدیر تأیید شد. ممنون از مشارکت شما!\n💎 شما ۵ امتیاز RLC دریافت کردید."
+        )
+        await query.edit_message_text("دفاعیه تأیید شد و ۵ امتیاز RLC به کاربر داده شد.")
+        
+    elif data.startswith("reject_"):
+        await context.bot.send_message(
+            chat_id=uid,
+            text="❌ دفاعیه شما توسط مدیر رد شد. لطفاً در نوبت بعدی با دقت بیشتری تلاش کنید."
+        )
+        await query.edit_message_text("دفاعیه رد شد و به کاربر اطلاع داده شد.")
+    else:
+        await query.edit_message_text("❌ تصمیم ناشناخته.")
+
 
 # ─── Register Handlers ──────────────────────────────────────────────────────
 def register_handlers(app: Application) -> None:
@@ -1547,9 +1610,11 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router), group=2)
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message), group=3)
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
+    app.add_handler(CallbackQueryHandler(handle_decision_callback, pattern="^(approve|reject)_user_\\d+$"))
+
 
 # ─── Main Entrypoint ───────────────────────────────────────────────────────
-  
+
 def main() -> None:
     """Initialize the bot and start polling for updates."""
     bot_token = os.getenv("BOT_TOKEN")
