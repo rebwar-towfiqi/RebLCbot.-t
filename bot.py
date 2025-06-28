@@ -13,6 +13,7 @@ import logging
 import os
 import sqlite3
 import re
+
 import json
 import tempfile
 
@@ -22,9 +23,9 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Generator, Optional
-from database import get_db
 
+from typing import Generator, Optional
+from database import add_score, get_db
 # External libraries
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, APIError, RateLimitError, AuthenticationError
@@ -37,9 +38,12 @@ from telegram.ext import ContextTypes
 
 from texts import TEXTS  # assuming texts.py provides translation strings
 
+from database import add_score
 
 from functools import wraps
+
 from database import add_rlc_score  # مطمئن شو این تابع را در db.py ساختی
+
 from database import create_score_table
 create_score_table()
 
@@ -1556,19 +1560,18 @@ async def handle_decision_callback(update: Update, context: ContextTypes.DEFAULT
     uid = int(uid_match.group(1))
 
     if data.startswith("approve_"):
-        # افزایش امتیاز RLC
-        add_score(uid, amount=1)
+        add_score(uid, amount=10)  # ✅ افزودن امتیاز
         await context.bot.send_message(
             chat_id=uid,
-            text="✅ دفاعیه شما توسط مدیر تأیید شد و یک امتیاز RLC دریافت کردید!"
+            text="✅ دفاعیه شما توسط مدیر تأیید شد و ۱۰ امتیاز دریافت کردید!"
         )
-        await query.edit_message_text("✅ دفاعیه تأیید شد، امتیاز اضافه شد و به کاربر اطلاع داده شد.")
+        await query.edit_message_text("دفاعیه تأیید شد، امتیاز ثبت شد و به کاربر اطلاع داده شد.")
     elif data.startswith("reject_"):
         await context.bot.send_message(
             chat_id=uid,
             text="❌ دفاعیه شما توسط مدیر رد شد. لطفاً در نوبت بعدی با دقت بیشتری تلاش کنید."
         )
-        await query.edit_message_text("🚫 دفاعیه رد شد و به کاربر اطلاع داده شد.")
+        await query.edit_message_text("دفاعیه رد شد و به کاربر اطلاع داده شد.")
     else:
         await query.edit_message_text("❌ تصمیم ناشناخته.")
 
