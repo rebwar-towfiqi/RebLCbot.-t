@@ -148,9 +148,27 @@ def create_score_table():
             )
         ''')
 
-def add_score(user_id: int, amount: int = 1) -> None:
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute(
-            "INSERT INTO rlc_scores (user_id, score) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET score = score + ?",
-            (user_id, amount, amount)
+def add_score(user_id: int, amount: int = 10) -> None:
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # ایجاد جدول اگر وجود ندارد
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_scores (
+            telegram_id INTEGER PRIMARY KEY,
+            score INTEGER DEFAULT 0,
+            last_played TEXT
         )
+    """)
+
+    # اگر کاربر قبلاً امتیازی ندارد، یک ردیف جدید ایجاد کن
+    cursor.execute("""
+        INSERT INTO user_scores (telegram_id, score, last_played)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(telegram_id) DO UPDATE SET
+            score = score + excluded.score,
+            last_played = datetime('now')
+    """, (user_id, amount))
+
+    conn.commit()
+    conn.close()
